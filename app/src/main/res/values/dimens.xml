@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="dialog_padding">24dp</dimen>
+
+    <!--
+        圆角体系（全应用统一，都是圆角矩形，不用胶囊 / 圆形）：
+        xs：标记、角标；s：标签、输入框、色块；m：按钮、列表行；l：卡片、弹框、底部面板。
+    -->
+    <dimen name="corner_xs">6dp</dimen>
+    <dimen name="corner_s">12dp</dimen>
+    <dimen name="corner_m">16dp</dimen>
+    <dimen name="corner_l">24dp</dimen>
+
+    <!-- 控件尺寸 -->
+    <dimen name="button_height">44dp</dimen>
+    <dimen name="button_height_large">56dp</dimen>
+    <dimen name="icon_button_size">44dp</dimen>
+    <dimen name="row_min_height">56dp</dimen>
+    <!-- 对话框样式 Activity 的内容宽度 + 两侧留边，总宽不超过最窄的手机屏幕（360dp）。 -->
+    <dimen name="dialog_width">320dp</dimen>
+    <dimen name="dialog_margin">16dp</dimen>
+</resources>

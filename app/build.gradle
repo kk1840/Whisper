@@ -1,0 +1,100 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.stepos.unifiedsigning.signing'
+}
+
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def stepfunApiKey = localProps.getProperty('stepfun.apiKey', System.getenv('STEPFUN_API_KEY') ?: '')
+
+android {
+    namespace 'com.stepos.whisper'
+    compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion '25.1.8937393'
+
+    defaultConfig {
+        applicationId 'com.stepos.whisper'
+        minSdk rootProject.ext.minSdkVersion
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode 1_00_000
+        versionName '1.0.0'
+
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+
+        buildConfigField 'String', 'STEPFUN_API_KEY', "\"${stepfunApiKey}\""
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += ['room.schemaLocation': "$projectDir/schemas".toString()]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // 眼镜（glasses 包）用 Kotlin 编写，字节码目标与 Java 保持一致。
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    buildFeatures {
+        buildConfig true
+        viewBinding true
+    }
+}
+
+unifiedSigning {
+    forbidLocalKeystore.set(true)
+}
+
+// AGP 8.1.1 在 JDK 21 下执行 jlink（JdkImageTransform）会失败，Java 编译锁定到 JDK 17 toolchain。
+tasks.withType(JavaCompile).configureEach {
+    javaCompiler = javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+dependencies {
+    implementation files('libs/sherpa-onnx-1.13.8.aar')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$rootProject.ext.kotlinStdlibVersion"
+
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.lifecycle:lifecycle-livedata:2.6.2'
+
+    implementation "androidx.room:room-runtime:$rootProject.ext.roomVersion"
+    annotationProcessor "androidx.room:room-compiler:$rootProject.ext.roomVersion"
+
+    implementation "com.squareup.okhttp3:okhttp:$rootProject.ext.okhttpVersion"
+    implementation "com.google.code.gson:gson:$rootProject.ext.gsonVersion"
+}

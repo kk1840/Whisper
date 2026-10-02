@@ -1,0 +1,14 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = "NexusPublic"
+            url = uri("https://nexus.zyql.com/repository/maven-public/")
+        }
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "Whisper"
+include ':app'

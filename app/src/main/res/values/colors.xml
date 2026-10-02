@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#FF3D5AFE</color>
+    <!-- 淡色按钮（Tonal）和选中态容器用的主色浅调。 -->
+    <color name="primary_container">#FFDDE3FF</color>
+    <color name="on_primary_container">#FF0F2A8A</color>
+    <!-- 实况通知按钮的占位图标（真正的按钮图标走 extendImage）。 -->
+    <color name="transparent">#00000000</color>
+    <color name="partial_text">#FF9E9E9E</color>
+    <color name="overlay_bg">#F2202634</color>
+    <color name="overlay_text">#FFFFFFFF</color>
+    <color name="speaker_name">#FF3D5AFE</color>
+    <color name="main_bg">#FFEEF0F6</color>
+    <color name="panel_bg">#FFFFFFFF</color>
+    <!-- 面板上的次级容器（标签、列表行、提示条）。 -->
+    <color name="surface_tint">#FFF3F4F9</color>
+    <color name="divider">#1F000000</color>
+    <color name="card_text">#FFFFFFFF</color>
+    <color name="card_text_dim">#D9FFFFFF</color>
+    <color name="read_text">#FF00897B</color>
+    <color name="read_bg">#3326A69A</color>
+
+    <!-- 状态色：成功 / 进行中 / 警告 / 危险 / 闲置，界面和实况通知共用。 -->
+    <color name="state_ok">#FF43A047</color>
+    <color name="state_busy">#FF1E88E5</color>
+    <color name="state_warn">#FFF57C00</color>
+    <color name="state_danger">#FFE53935</color>
+    <color name="state_idle">#FF9E9E9E</color>
+    <!-- 警告提示条的淡色背景。 -->
+    <color name="warn_bg">#1AF57C00</color>
+</resources>

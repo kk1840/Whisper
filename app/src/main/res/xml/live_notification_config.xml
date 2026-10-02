@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<live-notification-config>
+    <title>@string/app_name</title>
+    <description>@string/live_description</description>
+    <icon>@drawable/ic_launcher_foreground</icon>
+</live-notification-config>

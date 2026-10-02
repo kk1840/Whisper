@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主界面「更多」：设置开关在上，操作在下，危险操作放最后。 -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="20dp">
+
+        <com.google.android.material.bottomsheet.BottomSheetDragHandleView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="8dp"
+            android:text="@string/sheet_section_settings"
+            android:textAppearance="?attr/textAppearanceTitleSmall"
+            android:textColor="@color/partial_text" />
+
+        <!-- 实时字幕 -->
+        <LinearLayout
+            android:id="@+id/row_caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_caption" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/menu_live_caption" />
+
+                <TextView
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/menu_live_caption_hint" />
+            </LinearLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- 识别聊天截图 -->
+        <LinearLayout
+            android:id="@+id/row_screenshot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_screenshot" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/menu_screenshot_watch" />
+
+                <TextView
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/menu_screenshot_watch_hint" />
+            </LinearLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_screenshot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- 声纹识别阈值 -->
+        <LinearLayout
+            android:id="@+id/row_threshold"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_tune" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/menu_threshold" />
+
+                <TextView
+                    android:id="@+id/threshold_value"
+                    style="@style/Widget.Whisper.RowSubtitle" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chevron" />
+        </LinearLayout>
+
+        <!-- Even G2 眼镜 -->
+        <LinearLayout
+            android:id="@+id/row_glasses"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_glasses" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/glasses_title" />
+
+                <TextView
+                    android:id="@+id/glasses_value"
+                    style="@style/Widget.Whisper.RowSubtitle" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chevron" />
+        </LinearLayout>
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginVertical="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="8dp"
+            android:text="@string/sheet_section_actions"
+            android:textAppearance="?attr/textAppearanceTitleSmall"
+            android:textColor="@color/partial_text" />
+
+        <!-- 立即让 AI 识别 -->
+        <LinearLayout
+            android:id="@+id/row_extract"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_ai_sync" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/action_extract_all" />
+
+                <TextView
+                    android:id="@+id/extract_value"
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/action_extract_all_hint" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 用户管理 -->
+        <LinearLayout
+            android:id="@+id/row_users"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_people" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/title_users" />
+
+                <TextView
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/title_users_hint" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chevron" />
+        </LinearLayout>
+
+        <!-- 录入 / 重新录入本人声纹 -->
+        <LinearLayout
+            android:id="@+id/row_enroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_voice" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/enroll_title"
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/menu_reenroll" />
+
+                <TextView
+                    android:id="@+id/enroll_value"
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/menu_reenroll_hint" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chevron" />
+        </LinearLayout>
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginVertical="8dp" />
+
+        <!-- 清除全部聊天内容（危险） -->
+        <LinearLayout
+            android:id="@+id/row_clear"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_clear_all"
+                app:tint="@color/state_danger" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/action_clear_chats"
+                    android:textColor="@color/state_danger" />
+
+                <TextView
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/action_clear_chats_hint" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

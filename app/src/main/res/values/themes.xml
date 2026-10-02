@@ -1,0 +1,319 @@
+<resources>
+
+    <!-- ================================================================ 形状：全应用统一圆角矩形 -->
+
+    <style name="ShapeAppearance.Whisper.ExtraSmall" parent="ShapeAppearance.Material3.Corner.ExtraSmall">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_xs</item>
+    </style>
+
+    <style name="ShapeAppearance.Whisper.Small" parent="ShapeAppearance.Material3.Corner.Small">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_s</item>
+    </style>
+
+    <style name="ShapeAppearance.Whisper.Medium" parent="ShapeAppearance.Material3.Corner.Medium">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_m</item>
+    </style>
+
+    <style name="ShapeAppearance.Whisper.Large" parent="ShapeAppearance.Material3.Corner.Large">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/corner_l</item>
+    </style>
+
+    <!-- 底部操作面板：只圆上面两个角。 -->
+    <style name="ShapeAppearance.Whisper.Sheet" parent="ShapeAppearance.Material3.Corner.Large">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/corner_l</item>
+        <item name="cornerSizeTopRight">@dimen/corner_l</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <!-- ================================================================ 基础主题 -->
+
+    <style name="Base.Theme.Whisper" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorSecondary">@color/primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondaryContainer">@color/primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_primary_container</item>
+        <item name="colorSurface">@color/panel_bg</item>
+        <item name="colorSurfaceVariant">@color/surface_tint</item>
+        <item name="colorError">@color/state_danger</item>
+
+        <!-- M3 的形状令牌全部换成本应用的圆角矩形，默认的胶囊形按钮、极小圆角输入框都不再出现。 -->
+        <item name="shapeAppearanceCornerExtraSmall">@style/ShapeAppearance.Whisper.ExtraSmall</item>
+        <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.Whisper.Small</item>
+        <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.Whisper.Large</item>
+        <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.Whisper.Large</item>
+
+        <item name="materialButtonStyle">@style/Widget.Whisper.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.Whisper.Button.Outlined</item>
+        <item name="borderlessButtonStyle">@style/Widget.Whisper.Button.Text</item>
+        <item name="materialIconButtonStyle">@style/Widget.Whisper.Button.Icon</item>
+        <item name="chipStyle">@style/Widget.Whisper.Chip</item>
+        <item name="materialCardViewStyle">@style/Widget.Whisper.Card</item>
+        <item name="textInputStyle">@style/Widget.Whisper.TextInput</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Whisper.AlertDialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Whisper.BottomSheet</item>
+        <item name="popupMenuBackground">@drawable/bg_popup</item>
+        <item name="snackbarStyle">@style/Widget.Whisper.Snackbar</item>
+    </style>
+
+    <style name="Theme.Whisper" parent="Base.Theme.Whisper" />
+
+    <style name="Theme.Whisper.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="Theme.Whisper.Fullscreen" parent="Theme.Whisper.NoActionBar">
+        <item name="android:windowBackground">@color/main_bg</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 卡片都是同色的，靠阴影分出层次；系统默认的阴影太淡。 -->
+        <item name="android:ambientShadowAlpha">0.15</item>
+        <item name="android:spotShadowAlpha">0.4</item>
+    </style>
+
+    <!-- 对话框样式的 Activity（命名陌生人、指定截图昵称）：窗口本身就是一张圆角卡片。 -->
+    <style name="Theme.Whisper.Dialog" parent="Theme.Material3.DayNight.Dialog.Alert">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorSecondary">@color/primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondaryContainer">@color/primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_primary_container</item>
+        <item name="colorSurface">@color/panel_bg</item>
+        <item name="colorSurfaceVariant">@color/surface_tint</item>
+        <item name="colorError">@color/state_danger</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowCloseOnTouchOutside">false</item>
+        <item name="android:windowBackground">@drawable/bg_dialog_window</item>
+        <item name="android:windowMinWidthMajor">0dp</item>
+        <item name="android:windowMinWidthMinor">0dp</item>
+
+        <item name="shapeAppearanceCornerExtraSmall">@style/ShapeAppearance.Whisper.ExtraSmall</item>
+        <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.Whisper.Small</item>
+        <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.Whisper.Large</item>
+        <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.Whisper.Large</item>
+        <item name="materialButtonStyle">@style/Widget.Whisper.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.Whisper.Button.Outlined</item>
+        <item name="borderlessButtonStyle">@style/Widget.Whisper.Button.Text</item>
+        <item name="materialIconButtonStyle">@style/Widget.Whisper.Button.Icon</item>
+        <item name="chipStyle">@style/Widget.Whisper.Chip</item>
+        <item name="materialCardViewStyle">@style/Widget.Whisper.Card</item>
+        <item name="textInputStyle">@style/Widget.Whisper.TextInput</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Whisper.AlertDialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Whisper.BottomSheet</item>
+        <item name="popupMenuBackground">@drawable/bg_popup</item>
+    </style>
+
+    <!-- ================================================================ 按钮 -->
+
+    <style name="Widget.Whisper.Button" parent="Widget.Material3.Button">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="iconPadding">6dp</item>
+        <item name="iconSize">20dp</item>
+    </style>
+
+    <style name="Widget.Whisper.Button.Tonal" parent="Widget.Material3.Button.TonalButton">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="iconPadding">6dp</item>
+        <item name="iconSize">20dp</item>
+    </style>
+
+    <style name="Widget.Whisper.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="iconPadding">6dp</item>
+        <item name="iconSize">20dp</item>
+    </style>
+
+    <style name="Widget.Whisper.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="iconPadding">6dp</item>
+        <item name="iconSize">20dp</item>
+    </style>
+
+    <!-- 危险操作（删除、清空）的文字按钮。 -->
+    <style name="Widget.Whisper.Button.Text.Danger">
+        <item name="android:textColor">@color/state_danger</item>
+        <item name="iconTint">@color/state_danger</item>
+        <item name="rippleColor">@color/state_danger</item>
+    </style>
+
+    <style name="Widget.Whisper.Button.Text.Dialog" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+    </style>
+
+    <style name="Widget.Whisper.Button.Text.Dialog.Flush" parent="Widget.Material3.Button.TextButton.Dialog.Flush">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Medium</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+    </style>
+
+    <!-- 44dp 的方形图标按钮，圆角矩形。 -->
+    <style name="Widget.Whisper.Button.Icon" parent="Widget.Material3.Button.IconButton">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Small</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="android:minWidth">@dimen/icon_button_size</item>
+        <item name="android:minHeight">@dimen/icon_button_size</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="iconSize">22dp</item>
+    </style>
+
+    <!-- 主界面顶部「待办 / 事实」切换，两个按钮拼成一个圆角矩形。 -->
+    <style name="Widget.Whisper.KindToggle" parent="Widget.Whisper.Button.Outlined">
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/kind_toggle_text</item>
+        <item name="backgroundTint">@color/kind_toggle_bg</item>
+        <item name="strokeColor">@color/primary</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+
+    <!-- ================================================================ 标签 / 卡片 / 输入框 -->
+
+    <style name="Widget.Whisper.Chip" parent="Widget.Material3.Chip.Assist">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Small</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="chipStrokeWidth">0dp</item>
+        <item name="chipMinHeight">36dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 可勾选的标签（选择已有的人）。 -->
+    <style name="Widget.Whisper.Chip.Choice" parent="Widget.Material3.Chip.Filter">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Small</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="chipStrokeWidth">0dp</item>
+        <item name="chipMinHeight">36dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="checkedIconVisible">true</item>
+        <item name="checkedIconTint">@android:color/white</item>
+    </style>
+
+    <style name="Widget.Whisper.Card" parent="Widget.Material3.CardView.Elevated">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Large</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="cardBackgroundColor">@color/panel_bg</item>
+        <item name="strokeWidth">0dp</item>
+    </style>
+
+    <style name="Widget.Whisper.TextInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">@dimen/corner_s</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/corner_s</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/corner_s</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/corner_s</item>
+    </style>
+
+    <style name="Widget.Whisper.Snackbar" parent="Widget.Material3.Snackbar">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Small</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+    </style>
+
+    <!-- ================================================================ 弹框 / 底部面板 -->
+
+    <style name="ThemeOverlay.Whisper.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="alertDialogStyle">@style/MaterialAlertDialog.Whisper</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Whisper.Button.Text.Dialog</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Whisper.Button.Text.Dialog</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Whisper.Button.Text.Dialog.Flush</item>
+    </style>
+
+    <style name="MaterialAlertDialog.Whisper" parent="MaterialAlertDialog.Material3">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Large</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="backgroundTint">@color/panel_bg</item>
+    </style>
+
+    <style name="ThemeOverlay.Whisper.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Whisper.BottomSheet</item>
+    </style>
+
+    <style name="Widget.Whisper.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Sheet</item>
+        <item name="shapeAppearanceOverlay">@null</item>
+        <item name="backgroundTint">@color/panel_bg</item>
+    </style>
+
+    <!-- ================================================================ 文本 -->
+
+    <!-- 底部操作面板里每一行的标题 / 说明。 -->
+    <style name="Widget.Whisper.RowTitle" parent="Widget.AppCompat.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textAppearance">?attr/textAppearanceBodyLarge</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+    </style>
+
+    <style name="Widget.Whisper.RowSubtitle" parent="Widget.AppCompat.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textAppearance">?attr/textAppearanceBodySmall</item>
+        <item name="android:textColor">@color/partial_text</item>
+    </style>
+
+    <!-- 页面里的小节标题。 -->
+    <style name="Widget.Whisper.SectionTitle" parent="Widget.AppCompat.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:textAppearance">?attr/textAppearanceTitleSmall</item>
+    </style>
+
+    <!-- 眼镜配对页「配对步骤与注意事项」的小节标题 / 正文。 -->
+    <style name="Widget.Whisper.GuideHeading" parent="Widget.AppCompat.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:textAppearance">?attr/textAppearanceTitleSmall</item>
+    </style>
+
+    <style name="Widget.Whisper.GuideBody" parent="Widget.AppCompat.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+        <item name="android:textAppearance">?attr/textAppearanceBodyMedium</item>
+    </style>
+</resources>

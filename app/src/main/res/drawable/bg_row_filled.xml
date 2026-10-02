@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 带淡色底的可点击行（用户列表、详情页头部等），圆角矩形。 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/colorControlHighlight">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/surface_tint" />
+            <corners android:radius="@dimen/corner_m" />
+        </shape>
+    </item>
+</ripple>

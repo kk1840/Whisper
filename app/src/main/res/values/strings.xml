@@ -1,0 +1,297 @@
+<resources>
+    <string name="app_name">Whisper</string>
+    <string name="title_users">用户管理</string>
+
+    <string name="status_preparing">正在准备模型…</string>
+    <string name="status_recording">正在录音</string>
+    <string name="status_paused">已暂停</string>
+    <string name="status_error">出错：%1$s</string>
+    <string name="status_error_title">录音无法继续</string>
+    <string name="status_error_detail">%1$s\n\n处理后点“继续”重试。模型文件缺失时需要先把模型推送到手机的系统目录。</string>
+
+    <string name="action_pause">暂停</string>
+    <string name="action_resume">继续</string>
+    <string name="action_close">关闭</string>
+    <string name="action_rename">改名</string>
+    <string name="action_delete">删除</string>
+    <string name="action_save">保存</string>
+    <string name="action_cancel">取消</string>
+
+    <string name="speaker_unknown">陌生人</string>
+    <string name="stranger_name">陌生人%1$d</string>
+    <string name="speaker_edit_title">编辑 %1$s</string>
+    <string name="stranger_prompt_title">听到新的声音：%1$s</string>
+    <string name="assign_title">这句话是谁说的？</string>
+    <string name="assign_hint">输入名字新建一个人，或者点下面已有的人，只把这一句归过去。</string>
+    <string name="speaker_name_section">名字</string>
+    <string name="action_later">以后再说</string>
+    <string name="merge_section">是已有的人？点一下关联过去</string>
+    <string name="merge_confirm">把“%1$s”并入“%2$s”？\n这些发言和事项会归到 %2$s 名下，以后这种声音也会认成 %2$s。</string>
+    <string name="action_merge">关联</string>
+    <string name="ai_idle">AI 就绪</string>
+    <string name="ai_working">AI 识别中 · 剩 %1$d 块</string>
+    <string name="ai_retrying">AI 连不上，%1$s 秒后重试 · 待识别 %2$d 块</string>
+    <string name="ai_offline">无网络，联网后自动识别 · 待识别 %1$d 块</string>
+    <string name="ai_error">AI 出错：%1$s</string>
+    <string name="ai_mark_done">AI✓</string>
+    <string name="ai_mark_queued">AI…</string>
+    <string name="action_clear_chats">清除全部聊天内容</string>
+    <string name="action_clear_chats_hint">转写记录会清空，认识的人和已提取的事项保留</string>
+    <string name="action_extract_all">让 AI 立即识别</string>
+    <string name="action_extract_all_hint">把转写里还没识别的内容现在就交给 AI（也可以点主界面左上角的 AI 状态）</string>
+    <string name="clear_chats_confirm">清除全部聊天记录？认识的人和已提取的事项会保留。</string>
+    <string name="extract_all_started">已把未识别的内容交给 AI</string>
+    <string name="extract_all_retrying">正在重新连接 AI…</string>
+    <string name="extract_all_none">没有需要识别的新内容</string>
+    <string name="service_not_running">录音服务未运行</string>
+
+    <string name="sheet_section_settings">设置</string>
+    <string name="sheet_section_actions">操作</string>
+    <string name="menu_live_caption">实时字幕</string>
+    <string name="menu_live_caption_hint">边说边显示正在识别的文字</string>
+    <string name="menu_threshold">声纹识别阈值</string>
+    <string name="threshold_value">当前 %1$.2f</string>
+    <string name="threshold_low">宽松 · 不易把熟人当陌生人</string>
+    <string name="threshold_high">严格 · 不易认错人</string>
+    <string name="threshold_message">调高更不容易认错人，但更容易把熟人当成新的陌生人；调低则相反。默认 0.50，修改后立即生效。</string>
+    <string name="title_users_hint">查看、改名、关联或删除认识的人</string>
+    <string name="menu_reenroll_hint">换个环境重新朗读一遍，识别更准</string>
+    <string name="enroll_title_hint">先认识你的声音，才能区分你和身边的人</string>
+    <string name="glasses_row_on">推送已开启 · %1$s</string>
+    <string name="glasses_row_off">推送已关闭</string>
+    <string name="transcript_empty">还没有识别到语音\n点一句话查看相关事项，长按可以改归属</string>
+    <string name="alias_banner">%1$d 张聊天截图里有新的人待指定</string>
+
+    <string name="permission_title">需要录音权限</string>
+    <string name="permission_rationale">Whisper 需要一直听着才能工作。请在系统设置里允许“麦克风”权限，然后回到这里。</string>
+    <string name="permission_settings">去设置</string>
+
+    <string name="new_speaker_hint">输入名字</string>
+    <string name="new_speaker_name_empty">请输入名字</string>
+
+    <string name="reminder_title">%1$s 相关事项</string>
+
+    <string name="users_empty">还没有用户，录音中听到新的声音会自动记为“陌生人N”</string>
+    <string name="user_summary">%1$d 项待办 · %2$d 条事实</string>
+    <string name="user_summary_owner">这是你自己 · %1$d 项待办 · %2$d 条事实</string>
+    <string name="user_facts_title">相关事项</string>
+    <string name="user_facts_empty">暂无事项</string>
+    <string name="user_utterances_title">最近说过的话</string>
+    <string name="user_delete_confirm">删除用户 %1$s？其声纹和事项都会被删除。</string>
+    <string name="fact_delete_confirm">删除这条事项？</string>
+
+    <string name="notif_channel_recording">录音状态</string>
+    <string name="notif_channel_alert">事项、陌生人与 AI 提醒</string>
+    <string name="notif_channel_progress">截图识别进度</string>
+    <string name="permission_denied">需要录音权限才能工作</string>
+    <string name="mic_open_failed">麦克风打不开，可能被其他应用占用，点“继续”重试</string>
+
+    <string name="action_more">更多</string>
+    <string name="action_detail">查看详情</string>
+    <string name="action_color">颜色</string>
+    <string name="menu_reenroll">重新录入本人声纹</string>
+
+    <string name="cards_empty">还没有和你相关的待办\n聊天中提到的约定、待办会出现在这里</string>
+    <string name="cards_empty_facts">还没有记下的事实\n聊天中提到的近况、喜好等会出现在这里</string>
+    <string name="kind_todo">待办</string>
+    <string name="kind_fact">事实</string>
+    <string name="kind_todo_count">待办 %1$d</string>
+    <string name="kind_fact_count">事实 %1$d</string>
+    <string name="card_index">%1$d / %2$d</string>
+    <string name="card_time">时间　%1$s</string>
+    <string name="card_location">地点　%1$s</string>
+    <string name="card_people">人物　%1$s</string>
+    <string name="card_recorded">记录　%1$s</string>
+    <string name="fact_recorded">记录于 %1$s</string>
+    <string name="chip_owner">%1$s（我）</string>
+    <string name="facts_none">%1$s 暂时没有和你相关的事项</string>
+    <string name="fact_meta">时间：%1$s\n地点：%2$s\n人物：%3$s</string>
+
+    <string name="new_speaker_play">播放声音</string>
+    <string name="new_speaker_stop_play">停止播放</string>
+
+    <string name="enroll_title">录入本人声纹</string>
+    <string name="enroll_subtitle">Whisper 需要先认识你的声音，才能区分你和身边的人。整个过程在本机完成。</string>
+    <string name="enroll_prompt_message">Whisper 需要认识你的声音，才能区分你和身边的人。稍后再说的话，你的声音会先被记成陌生人，之后可以在右下角“更多”里录入。</string>
+    <string name="enroll_prompt_now">直接录</string>
+    <string name="enroll_prompt_later">稍后再说</string>
+    <string name="enroll_name_hint">你的姓名</string>
+    <string name="enroll_read_hint">点击“开始录音”，用平常说话的语气朗读下面这段文字，读过的部分会变色，不必一字不差：</string>
+    <string name="enroll_passage">今天天气不错，我打算下午三点去公司开会，会后和同事一起吃饭。明天上午九点要去医院复查，记得带上病历和医保卡。周末准备带家人去公园散步，顺便买些水果和牛奶。我的电话号码尾号是二四六八，有事可以随时联系我。</string>
+    <string name="enroll_loading">正在加载识别和声纹模型…</string>
+    <string name="enroll_ready">准备好了，点击“开始录音”后朗读</string>
+    <string name="enroll_recording">正在录音，请朗读上面的文字…</string>
+    <string name="enroll_paused">已暂停，点击“继续”接着读</string>
+    <string name="enroll_enough">朗读完成，输入姓名后点击“完成”</string>
+    <string name="enroll_start">开始录音</string>
+    <string name="enroll_pause">暂停</string>
+    <string name="enroll_continue">继续</string>
+    <string name="enroll_done">完成</string>
+
+    <string name="enroll_title_new">添加声纹</string>
+    <string name="enroll_subtitle_new">请对方用平常说话的语气朗读下面这段文字，读完后输入对方的名字。整个过程在本机完成。</string>
+    <string name="enroll_name_hint_new">对方的名字</string>
+    <string name="enroll_enough_new">朗读完成，输入名字后点击“完成”</string>
+    <string name="enroll_title_add">为 %1$s 补录声纹</string>
+    <string name="enroll_subtitle_add">可以换一种说话方式朗读（比如压低声音），之后这样说话也能认出是 %1$s。</string>
+    <string name="enroll_enough_add">朗读完成，点击“完成”保存</string>
+    <string name="enroll_saved_new">已添加 %1$s</string>
+    <string name="enroll_saved_add">已为 %1$s 补录声纹</string>
+
+    <string name="action_add_voice">添加声纹</string>
+    <string name="action_add_more_voice">补录声纹</string>
+    <string name="action_delete_all">删除全部</string>
+    <string name="delete_all_title">删除全部用户？他们的事项会一起删除，聊天记录保留</string>
+    <string name="delete_all_include_owner">同时删除本人（之后需要重新录入声纹）</string>
+
+    <string name="focus_title">%1$s · %2$d 项相关事项</string>
+    <string name="focus_hint">左右滑动看下一张 · 点空白处关闭</string>
+
+    <string name="live_description">录音状态、熟人事项、陌生人、聊天截图和 AI 识别提醒</string>
+    <string name="live_rec_state">录音中</string>
+    <string name="live_rec_state_paused">已暂停</string>
+    <string name="live_rec_state_preparing">准备中</string>
+    <string name="live_rec_state_error">出错</string>
+    <string name="live_rec_error_hint">录音无法继续，点“打开”查看原因</string>
+    <string name="live_rec_idle">正在听，暂时没人说话</string>
+    <string name="live_rec_paused_hint">点“继续”恢复录音</string>
+    <string name="live_rec_waiting">等待说话</string>
+    <string name="live_action_pause">暂停</string>
+    <string name="live_action_open">打开</string>
+    <string name="live_action_view">查看</string>
+    <string name="live_action_name">命名</string>
+    <string name="live_action_retry">立即重试</string>
+    <string name="live_reminder_capsule">%1$s %2$d项</string>
+    <string name="live_reminder_state">%1$d 项事项</string>
+    <string name="live_fact_line">%1$s：%2$s</string>
+    <string name="live_stranger_state">待命名</string>
+    <string name="live_stranger_new">新声音</string>
+    <string name="live_new_facts">新事项</string>
+    <string name="live_new_facts_many">新增 %1$d 项</string>
+    <string name="live_ai_title">AI 异常</string>
+    <string name="live_ai_state_retrying">重试中</string>
+    <string name="live_ai_state_offline">无网络</string>
+    <string name="live_ai_state_error">失败</string>
+
+    <string name="user_owner_cannot_delete">本人不能删除，可以重新录入声纹</string>
+    <string name="user_pick_color">选择颜色</string>
+
+    <string name="ocr_title">识别截图文字</string>
+    <string name="ocr_no_image">没有收到图片</string>
+    <string name="ocr_running">正在识别…</string>
+    <string name="ocr_done">识别出 %1$d 行 · 检测 %2$d 毫秒 · 识别 %3$d 毫秒</string>
+    <string name="ocr_empty">没有识别到文字</string>
+    <string name="ocr_copy">复制全部</string>
+    <string name="ocr_copied">已复制</string>
+
+    <string name="menu_screenshot_watch">识别聊天截图</string>
+    <string name="menu_screenshot_watch_hint">截下聊天界面后自动识别文字，提取待办和事实</string>
+    <string name="alias_title">截图里的“%1$s”是谁？</string>
+    <string name="alias_remaining">这张截图里还有 %1$d 个昵称待指定</string>
+    <string name="alias_pick_user">是已有的人？点一下对应过去</string>
+    <string name="alias_new_user">或者新建一个人</string>
+    <string name="alias_new_user_hint">名字</string>
+    <string name="alias_ignore">忽略</string>
+    <string name="alias_ignore_hint">忽略后不再识别这个昵称的事项</string>
+    <string name="alias_done">已对应，以后同名自动识别</string>
+    <string name="alias_suggest">看起来像是“%1$s”，已帮你选中，确认即可</string>
+    <string name="alias_section">截图昵称</string>
+    <string name="alias_remove_confirm">不再把“%1$s”对应到 %2$s？</string>
+    <string name="alias_remove">解除</string>
+    <string name="live_alias_title">聊天截图</string>
+    <string name="live_alias_content">新的人：%1$s，指定是谁后才会提取相关事项</string>
+    <string name="live_alias_content_many">%2$d 个新的人：%1$s，指定是谁后才会提取相关事项</string>
+    <string name="live_alias_state">待指定</string>
+    <string name="live_action_assign">指定</string>
+    <string name="live_shot_title">截图识别</string>
+    <string name="live_shot_detected">检测到截图</string>
+    <string name="live_shot_detected_content">准备识别截图中的文字</string>
+    <string name="live_shot_ocr">识别文字</string>
+    <string name="live_shot_ocr_capsule">识别文字中</string>
+    <string name="live_shot_ocr_content">正在识别截图中的文字…</string>
+    <string name="live_shot_ai">AI 分析</string>
+    <string name="live_shot_ai_capsule">AI 分析中</string>
+    <string name="live_shot_ai_content">已发送给 AI，正在提取待办和信息…</string>
+    <string name="live_shot_done">完成</string>
+    <string name="live_shot_done_capsule">无新事项</string>
+    <string name="live_shot_done_content">没有发现新的待办或信息</string>
+    <string name="live_shot_skipped">已跳过</string>
+    <string name="live_shot_skipped_capsule">无聊天内容</string>
+    <string name="live_shot_skipped_content">没有识别到聊天内容</string>
+    <string name="live_shot_deferred">稍后重试</string>
+    <string name="live_shot_deferred_content">AI 暂时连不上，联网后自动继续</string>
+    <string name="live_shot_failed">失败</string>
+    <string name="live_shot_failed_capsule">识别失败</string>
+    <string name="live_shot_failed_content">AI 没能处理这张截图</string>
+
+    <!-- Even G2 眼镜 -->
+    <string name="glasses_title">Even G2 眼镜</string>
+    <string name="menu_glasses">Even G2 眼镜…</string>
+    <string name="glasses_enable">推送到 Even G2 眼镜</string>
+    <string name="glasses_enable_hint">熟人隔 5 分钟以上再开口时，把 TA 的待办和事实显示到眼镜上</string>
+
+    <string name="glasses_status_label">连接状态</string>
+    <string name="glasses_status_off">未启用</string>
+    <string name="glasses_status_disconnected">未连接</string>
+    <string name="glasses_status_scanning">正在扫描镜腿…</string>
+    <string name="glasses_status_connecting">正在连接…</string>
+    <string name="glasses_status_authenticating">正在握手…</string>
+    <string name="glasses_status_ready">已连接，可以推送</string>
+    <string name="glasses_status_bt_off">蓝牙未打开</string>
+    <string name="glasses_status_no_permission">缺少蓝牙权限</string>
+    <string name="glasses_arm_left">左镜腿</string>
+    <string name="glasses_arm_right">右镜腿</string>
+    <string name="glasses_arm_none">未找到</string>
+    <string name="glasses_arm_found">已找到 · %1$s</string>
+    <string name="glasses_arm_connected">已连接 · %1$s</string>
+    <string name="glasses_arm_ready">已就绪 · %1$s</string>
+    <string name="glasses_last_error">最近一次错误：%1$s</string>
+    <string name="glasses_err_scan_timeout">扫描超时，没有同时找到左右镜腿（左 %1$s · 右 %2$s）</string>
+    <string name="glasses_err_scan_failed">蓝牙扫描失败（错误码 %1$d）</string>
+    <string name="glasses_err_connect_failed">%1$s连接失败（状态 %2$d），稍后自动重试</string>
+    <string name="glasses_err_disconnected">%1$s断开（状态 %2$d），稍后自动重试</string>
+    <string name="glasses_err_no_service">%1$s上没有找到眼镜的蓝牙服务，这可能不是 Even G2</string>
+    <string name="glasses_err_not_paired">还没有配对过眼镜，请点“扫描并配对”</string>
+    <string name="glasses_found_yes">已找到</string>
+    <string name="glasses_found_no">未找到</string>
+    <string name="glasses_remembered">已记住的眼镜：左 %1$s · 右 %2$s</string>
+    <string name="glasses_remembered_none">还没有配对过眼镜</string>
+    <string name="glasses_page_shown">眼镜上正在显示推送的画面</string>
+
+    <string name="glasses_action_scan">扫描并配对</string>
+    <string name="glasses_action_disconnect">断开</string>
+    <string name="glasses_action_forget">忘记眼镜</string>
+    <string name="glasses_action_test">发送测试图片</string>
+    <string name="glasses_action_dismiss">关闭眼镜画面</string>
+    <string name="glasses_action_enable_bt">打开蓝牙</string>
+    <string name="glasses_action_grant">授予权限</string>
+
+    <string name="glasses_scan_results">扫描到的镜腿</string>
+    <string name="glasses_scan_empty">还没有扫描到镜腿。请确认眼镜已开机、不在充电盒里，并已退出官方 Even App。</string>
+    <string name="glasses_scan_hint">左右镜腿都找到后会自动连接。如果附近有多副眼镜，点一下列表项可以手动指定左右。</string>
+    <string name="glasses_side_left">左</string>
+    <string name="glasses_side_right">右</string>
+    <string name="glasses_side_unknown">未知</string>
+    <string name="glasses_scan_item_meta">%1$s · %2$d dBm · %3$s</string>
+    <string name="glasses_pick_side_title">把“%1$s”指定为</string>
+
+    <string name="glasses_forget_confirm">忘记已配对的眼镜？会立即断开连接，之后需要重新扫描配对。</string>
+    <string name="glasses_test_sent">测试图片已发送，请看眼镜</string>
+    <string name="glasses_test_failed">发送失败：%1$s</string>
+    <string name="glasses_not_ready">眼镜还没有连接好</string>
+    <string name="glasses_permission_needed">需要“附近设备”（蓝牙）权限才能扫描和连接眼镜</string>
+    <string name="glasses_bt_off_hint">请先打开手机蓝牙</string>
+    <string name="glasses_disabled_hint">开关关闭时不会连接眼镜</string>
+
+    <string name="glasses_guide_title">配对步骤与注意事项</string>
+    <string name="glasses_guide_1_title">一、配对前准备</string>
+    <string name="glasses_guide_1_body">1. 把眼镜从充电盒里取出并戴上（或打开镜腿），确认眼镜已开机。\n2. 把眼镜放在手机 1 米以内，打开手机蓝牙。\n3. 先退出官方 Even App，或在 Even App 里断开眼镜。眼镜一旦被别的应用连走就不再广播，这里会扫不到；两个应用同时连着也会互相抢命令，画面会乱。\n4. Android 12 及以上需要授予本应用“附近设备”权限；Android 11 及以下需要位置权限才能扫描蓝牙。本应用不会使用你的位置。</string>
+    <string name="glasses_guide_2_title">二、配对是怎么进行的</string>
+    <string name="glasses_guide_2_body">1. G2 的左、右镜腿是两个独立的蓝牙设备，名字形如 “Even G2_L_xxxx” 和 “Even G2_R_xxxx”。两条镜腿都必须找到并连接，缺一条都不能推送。\n2. 点“扫描并配对”后会扫描最多 20 秒，找到左右两条镜腿就自动连接；如果系统蓝牙设置里已经连着眼镜，会直接接管这条连接。\n3. 不需要输入配对码，也不会弹出系统配对窗口。连接后应用会和眼镜做一次握手（约 1～2 秒），状态显示“已连接，可以推送”才算完成。\n4. 配对成功后会记住两条镜腿的地址。之后录音服务启动时会在后台自动重连，不必再进这个页面。</string>
+    <string name="glasses_guide_3_title">三、使用中</string>
+    <string name="glasses_guide_3_body">1. 眼镜和手机保持在约 10 米以内，中间不要隔墙。\n2. 推送到眼镜的画面大约 60 秒后自动关闭，回到眼镜自己的仪表盘；也可以点“关闭眼镜画面”立即关闭。\n3. 摘下眼镜放回充电盒时连接会断开，再取出戴上后会自动重连，通常几秒到几十秒。\n4. 推送一整屏画面大约需要 5～10 秒，期间请不要反复触发。\n5. 连接眼镜期间手机会多耗一点电，不需要时可以关闭上面的开关。</string>
+    <string name="glasses_guide_4_title">四、注意事项</string>
+    <string name="glasses_guide_4_body">1. 本功能基于社区逆向整理的 G2 蓝牙协议实现，不是 Even Realities 官方支持。眼镜固件升级后有可能失效。\n2. 不要让官方 Even App 和本应用同时向眼镜推送内容。\n3. 如果反复连接失败：先确认 Even App 已退出；把眼镜放回充电盒再取出（相当于重启）；或点“忘记眼镜”后重新扫描。\n4. 本应用只向眼镜发送显示内容和心跳，不会修改眼镜的任何设置，也不会读取眼镜麦克风。\n5. 如果手机蓝牙关闭后再打开，会自动尝试重连。</string>
+    <string name="glasses_guide_5_title">五、什么时候会推送</string>
+    <string name="glasses_guide_5_body">某位已认识的人（不含机主本人）距上次说话超过 5 分钟后再次开口，并且此时左右镜腿都已连接，就会把 TA 未完成的待办和仍成立的事实渲染成一张黑底白字的图片推送到眼镜上。手机上的提醒照常显示，眼镜推送是额外的。可以用“发送测试图片”先确认链路正常。</string>
+</resources>

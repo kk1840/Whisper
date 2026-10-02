@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="main_bg">#FF101218</color>
+    <color name="panel_bg">#FF1B1E26</color>
+    <color name="primary_container">#FF2C3A80</color>
+    <color name="on_primary_container">#FFDDE3FF</color>
+    <color name="surface_tint">#FF262A35</color>
+    <color name="divider">#1FFFFFFF</color>
+    <color name="warn_bg">#33F57C00</color>
+</resources>
