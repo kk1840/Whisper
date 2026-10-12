@@ -95,12 +95,14 @@ public class VoiceprintLibrary {
      * 没有注册用户或无命中时 result 为 null、error 为 null。
      */
     public void search(byte[] pcm16k, Listener<Match> listener) {
-        Map<String, Long> map = mFeatureToUser;
-        if (map.isEmpty()) {
-            deliver(listener, null, null);
-            return;
-        }
+        // 空映射也走异步投递：若在调用线程（speech-proc）上同步回调，后续 proc() 自投递
+        // 的补标任务在单线程定时池上会异常滞留，句子永远停在“待识别”。
         if (!enqueue(() -> {
+            Map<String, Long> map = mFeatureToUser;
+            if (map.isEmpty()) {
+                deliver(listener, null, null);
+                return;
+            }
             try {
                 XfVoiceprintClient.SearchResult r = mClient.searchFea(GROUP_ID, 5, pcm16k);
                 if (!r.scores.isEmpty()) {
@@ -130,6 +132,10 @@ public class VoiceprintLibrary {
                 deliver(listener, null, null);
             } catch (IOException e) {
                 deliver(listener, null, e);
+            } catch (RuntimeException e) {
+                // 回调链上的运行时异常会杀死单线程 worker，后续检索全部静默滞留——兜住并按失败回调。
+                android.util.Log.e(TAG, "search crashed on callback", e);
+                deliver(listener, null, new IOException("search callback crashed", e));
             }
         })) {
             deliver(listener, null, new IOException("voiceprint queue shut down"));
