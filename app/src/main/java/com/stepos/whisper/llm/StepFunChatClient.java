@@ -36,7 +36,9 @@ public class StepFunChatClient {
         /** 全天录音的转写。 */
         SPEECH,
         /** 聊天软件截图经 OCR 后整理出的对话。 */
-        SCREENSHOT
+        SCREENSHOT,
+        /** 微信通知里的消息。 */
+        NOTIFICATION
     }
 
     private static final String INTRO_SPEECH =
@@ -45,11 +47,15 @@ public class StepFunChatClient {
     private static final String INTRO_SCREENSHOT =
             "你是机主的私人记忆助手。下面给你的是机主手机上一张聊天软件截图里的对话——这一定是聊天场景"
                     + "（微信、QQ、飞书等的聊天界面），已经按发送者整理好，标注为“机主”的是机主本人发出的消息。";
+    private static final String INTRO_NOTIFICATION =
+            "你是机主的私人记忆助手。下面给你的是机主手机上收到的一条微信消息通知，发送者是机主微信上的一位联系人，"
+                    + "内容是这位联系人最近发来的消息文字（可能被通知栏截断，按语义理解）。";
     private static final String TASK =
             "你要从中整理两类内容，下次和这位熟人见面时提醒机主：\n"
                     + "一、待办：机主或对方答应要做的事（待办）、双方的约定或约好的见面（约定）。"
-                    + "每条拆成四个字段：time（时间）、location（地点）、people（涉及的人物，用顿号分隔）、"
-                    + "event（要做的事，一句简洁中文，不超过 40 字）。对话里没提到的字段填 null，不要编造。\n"
+                    + "每条拆成四个字段：time（时间）、location（地点）、people（涉及的人物，用顿号分隔，"
+                    + "其中机主本人写“我”，不要写“机主”）、event（要做的事，一句简洁中文，不超过 40 字）。"
+                    + "对话里没提到的字段填 null，不要编造。\n"
                     + "二、事实：对话里透露的关于这位熟人（没有熟人时是机主本人）的事实，包括身体状况、工作和家庭上的变化等"
                     + "（近况），喜好、忌口、习惯（偏好），生日、家人、职业等个人信息（信息）。"
                     + "比如对方说最近胃不舒服，就记一条事实“最近胃不舒服”。每条事实写成 content："
@@ -62,11 +68,28 @@ public class StepFunChatClient {
     private static final String RULE_TYPOS_SPEECH = "4. 转写可能有错别字，按语义理解；没有值得记录的内容就返回空数组。\n";
     private static final String RULE_TYPOS_SCREENSHOT =
             "4. 文字来自截图 OCR，可能有错别字或漏字，按语义理解；没有值得记录的内容就返回空数组。\n";
+    /** 只有微信通知来源拼进提示词：新消息的待办和已有待办是同一件事时输出合并建议而不是新待办。 */
+    private static final String RULE_MERGE =
+            "4. 如果新消息里的待办和某条已有待办是同一件事（同一次外出要办的采购清单、同一个约见的时间地点补充或更新，"
+                    + "比如已有“下班买点苹果”，对方又说下班带一箱榴莲），不要把它输出到 new_todos，改输出到 merged_todos："
+                    + "target_id 填那条已有待办的 id，new_event 填这条新消息单独作为待办时的一句话描述"
+                    + "（只说新的内容，如“下班带一箱榴莲”），event 填把两边信息合在一起后的完整描述"
+                    + "（如“下班买点苹果和带一箱榴莲”，不超过 40 字），time/location/people 填合并后的值，"
+                    + "消息没有提供新值的字段填 null。不是同一件事（要买的东西互不相干、不同时间的约定等）不要合并。\n"
+                    + "5. 没有值得记录的内容就返回空数组。\n";
     private static final String FORMAT =
             "只输出 JSON，格式：{\"new_todos\":[{\"time\":\"...或 null\",\"location\":\"...或 null\","
                     + "\"people\":\"...或 null\",\"event\":\"...\",\"type\":\"待办|约定\"}],"
                     + "\"new_facts\":[{\"content\":\"...\",\"type\":\"近况|偏好|信息\"}],"
                     + "\"completed_todo_ids\":[整数 id],\"outdated_fact_ids\":[整数 id]}";
+    private static final String FORMAT_WITH_MERGE =
+            "只输出 JSON，格式：{\"new_todos\":[{\"time\":\"...或 null\",\"location\":\"...或 null\","
+                    + "\"people\":\"...或 null\",\"event\":\"...\",\"type\":\"待办|约定\"}],"
+                    + "\"new_facts\":[{\"content\":\"...\",\"type\":\"近况|偏好|信息\"}],"
+                    + "\"completed_todo_ids\":[整数 id],\"outdated_fact_ids\":[整数 id],"
+                    + "\"merged_todos\":[{\"target_id\":整数,\"new_event\":\"新消息自己的待办\","
+                    + "\"time\":\"...或 null\",\"location\":\"...或 null\","
+                    + "\"people\":\"...或 null\",\"event\":\"合并后的完整描述\"}]}";
 
     private static final String PARSE_PROMPT =
             "你是机主的私人记忆助手。机主刚在手机上截了一张聊天软件的屏幕截图，下面是对这张截图做 OCR 得到的文字。"
@@ -115,9 +138,12 @@ public class StepFunChatClient {
     public ExtractionResult extract(String userName, List<UserFact> existingFacts, String transcript, Source source)
             throws IOException {
         boolean screenshot = source == Source.SCREENSHOT;
-        String system = (screenshot ? INTRO_SCREENSHOT : INTRO_SPEECH) + TASK
-                + (screenshot ? RULE_TYPOS_SCREENSHOT : RULE_TYPOS_SPEECH) + FORMAT;
-        String user = buildUserPrompt(userName, existingFacts, transcript, screenshot);
+        boolean notification = source == Source.NOTIFICATION;
+        String intro = notification ? INTRO_NOTIFICATION : (screenshot ? INTRO_SCREENSHOT : INTRO_SPEECH);
+        String rules = notification ? RULE_MERGE
+                : (screenshot ? RULE_TYPOS_SCREENSHOT : RULE_TYPOS_SPEECH);
+        String system = intro + TASK + rules + (notification ? FORMAT_WITH_MERGE : FORMAT);
+        String user = buildUserPrompt(userName, existingFacts, transcript, screenshot, notification);
         JsonObject json = complete(system, user);
         if (!hasExtractionKeys(json)) {
             // 模型偶尔只回一个空对象 {}，对话里有内容可记时也会这样，直接重问一次。
@@ -213,7 +239,8 @@ public class StepFunChatClient {
     /** 外层结构或单条待办、事实都算；空对象和不认识的键不算。 */
     private static boolean hasExtractionKeys(JsonObject json) {
         return json.has("new_todos") || json.has("new_facts") || json.has("completed_todo_ids")
-                || json.has("outdated_fact_ids") || json.has("event") || json.has("content");
+                || json.has("outdated_fact_ids") || json.has("merged_todos") || json.has("event")
+                || json.has("content");
     }
 
     private <T> T fromJson(JsonObject json, Class<T> type) throws IOException {
@@ -225,14 +252,21 @@ public class StepFunChatClient {
     }
 
     private static String buildUserPrompt(String userName, List<UserFact> existing, String transcript,
-                                          boolean screenshot) {
+                                          boolean screenshot, boolean notification) {
         StringBuilder sb = new StringBuilder();
         sb.append("熟人姓名：").append(userName).append("\n\n已有待办：\n");
         appendExisting(sb, existing, UserFact.KIND_TODO);
         sb.append("\n已有事实：\n");
         appendExisting(sb, existing, UserFact.KIND_FACT);
-        sb.append(screenshot ? "\n聊天截图里的对话（发送者是截图里显示的昵称）：\n"
-                : "\n对话转写（“陌生人N”是还没命名的说话人，“其他人”是无法辨认的旁人）：\n").append(transcript);
+        String header;
+        if (notification) {
+            header = "\n微信消息通知（发送者是微信昵称，昵称可能和熟人姓名写法不同）：\n";
+        } else if (screenshot) {
+            header = "\n聊天截图里的对话（发送者是截图里显示的昵称）：\n";
+        } else {
+            header = "\n对话转写（“陌生人N”是还没命名的说话人，“其他人”是无法辨认的旁人）：\n";
+        }
+        sb.append(header).append(transcript);
         return sb.toString();
     }
 

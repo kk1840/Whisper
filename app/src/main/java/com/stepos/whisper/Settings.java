@@ -16,6 +16,8 @@ public final class Settings {
     private static final String KEY_XF_GROUP_READY = "xf_group_ready";
     private static final String KEY_LIVE_CAPTION = "live_caption";
     private static final String KEY_SCREENSHOT_WATCH = "screenshot_watch";
+    private static final String KEY_NOTIFICATION_WATCH = "notification_watch";
+    private static final String KEY_NOTIFICATION_DEBUG_ALL_APPS = "notification_debug_all_apps";
     private static final String KEY_LAST_SCREENSHOT_ID = "last_screenshot_id";
     private static final String KEY_GLASSES_PUSH = "glasses_push";
     private static final String KEY_GLASSES_LEFT_ADDR = "glasses_left_addr";
@@ -62,6 +64,24 @@ public final class Settings {
 
     public static void setScreenshotWatchEnabled(Context context, boolean enabled) {
         prefs(context).edit().putBoolean(KEY_SCREENSHOT_WATCH, enabled).apply();
+    }
+
+    /** 是否读取微信通知提取待办（监听器侧的开关；系统通知权限另见 NotificationAccessHelper）。 */
+    public static boolean isNotificationWatchEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_NOTIFICATION_WATCH, true);
+    }
+
+    public static void setNotificationWatchEnabled(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_NOTIFICATION_WATCH, enabled).apply();
+    }
+
+    /** 调试：监听所有应用的通知（不只微信），方便没有微信在手时测试整条链路。 */
+    public static boolean isNotificationDebugAllApps(Context context) {
+        return prefs(context).getBoolean(KEY_NOTIFICATION_DEBUG_ALL_APPS, false);
+    }
+
+    public static void setNotificationDebugAllApps(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_NOTIFICATION_DEBUG_ALL_APPS, enabled).apply();
     }
 
     /** 已处理过的最大截图 MediaStore id；没有记录时为 -1。 */

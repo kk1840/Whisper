@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 待办合并确认：黑底全屏，上下两张卡片，合并按钮点掉后播放融合动画（见 MergeOverlay）。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/scrim"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#E6000000"
+    android:clickable="true"
+    android:clipChildren="false"
+    android:focusable="false">
+
+    <LinearLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:clipChildren="false"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="24dp"
+            android:text="@string/merge_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="6dp"
+            android:text="@string/merge_subtitle"
+            android:textColor="#99FFFFFF"
+            android:textSize="13sp" />
+
+        <FrameLayout
+            android:id="@+id/stage"
+            android:layout_width="312dp"
+            android:layout_height="356dp"
+            android:layout_marginTop="18dp"
+            android:clipChildren="false">
+
+            <include
+                android:id="@+id/card_a"
+                layout="@layout/item_merge_card"
+                android:layout_gravity="center" />
+
+            <include
+                android:id="@+id/card_b"
+                layout="@layout/item_merge_card"
+                android:layout_gravity="center" />
+
+            <include
+                android:id="@+id/card_merged"
+                layout="@layout/item_merge_card"
+                android:layout_gravity="center" />
+
+            <com.stepos.whisper.ui.MergeFxView
+                android:id="@+id/fx"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/merge"
+            android:layout_width="220dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/merge_action"
+            android:textSize="16sp"
+            app:cornerRadius="22dp"
+            app:iconGravity="textStart" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/keep"
+            style="@style/Widget.Whisper.Button.Text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/merge_keep"
+            android:textColor="#CCFFFFFF" />
+    </LinearLayout>
+</FrameLayout>

@@ -114,9 +114,32 @@
                 android:resource="@xml/live_notification_config" />
         </service>
 
+        <!-- 读微信通知提取待办。system uid 直接写 secure 设置把自己加进监听名单（NotificationAccessHelper）。 -->
+        <service
+            android:name=".notification.WeChatNotificationListener"
+            android:exported="true"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".live.LiveActionReceiver"
             android:exported="false" />
+
+        <!-- 调试触发：伪造微信通知 / 直接弹合并动画（release 构建里直接忽略）。
+             隐式广播按 action 匹配，必须声明 intent-filter 才能被 am broadcast 唤到。 -->
+        <receiver
+            android:name=".service.DebugReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.stepos.whisper.DEBUG_NOTIF" />
+                <action android:name="com.stepos.whisper.DEBUG_NOTIF_ALL" />
+                <action android:name="com.stepos.whisper.DEBUG_MERGE" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

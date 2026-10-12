@@ -23,11 +23,13 @@ public final class ServiceState {
             new MutableLiveData<>(new AiStatus(AiStatus.State.IDLE, 0, ""));
     /** 等着弹出命名窗口的新陌生人，-1 表示没有。主界面在前台时取走并弹窗。 */
     private static final MutableLiveData<Long> sStrangerPrompt = new MutableLiveData<>(NO_PROMPT);
-    /** 等着弹出“截图里的昵称是谁”窗口的截图任务 id，-1 表示没有。主界面在前台时取走并弹窗。 */
-    private static final MutableLiveData<Long> sAliasPrompt = new MutableLiveData<>(NO_PROMPT);
-    /** 所有还有昵称等机主指定的截图任务，主界面据此显示提示条。 */
-    private static final MutableLiveData<List<Long>> sAliasWaiting =
+    /** 等着弹出“这个昵称是谁”窗口的任务，null 表示没有。主界面在前台时取走并弹窗。 */
+    private static final MutableLiveData<AliasPrompt> sAliasPrompt = new MutableLiveData<>(null);
+    /** 所有还有昵称等机主指定的任务（截图和微信通知混在一起），主界面据此显示提示条。 */
+    private static final MutableLiveData<List<AliasPrompt>> sAliasWaiting =
             new MutableLiveData<>(Collections.emptyList());
+    /** 微信通知链路的当前进度，null 表示没有进行中的，主界面顶部提示条据此显示。 */
+    private static final MutableLiveData<NotifProgress> sNotifProgress = new MutableLiveData<>(null);
 
     private static final List<TranscriptLine> sLineBuffer = new ArrayList<>();
     private static long sNextLineId = 1;
@@ -58,6 +60,40 @@ public final class ServiceState {
             this.state = state;
             this.pending = pending;
             this.detail = detail;
+        }
+    }
+
+    /** 一个等着机主指定昵称的任务：截图或微信通知。 */
+    public static final class AliasPrompt {
+        public final long jobId;
+        /** true = 微信通知消息（对应 NotificationWorker），false = 聊天截图（对应 ScreenshotWorker）。 */
+        public final boolean notification;
+
+        public AliasPrompt(long jobId, boolean notification) {
+            this.jobId = jobId;
+            this.notification = notification;
+        }
+    }
+
+    /** 微信消息“识别到 → 正在 AI 识别 → 结果”的进度。 */
+    public static final class NotifProgress {
+        public static final int RECEIVED = 0;
+        public static final int ALIAS = 1;
+        public static final int DONE = 2;
+        public static final int NONE = 3;
+        public static final int MERGE = 4;
+        public static final int IGNORED = 5;
+
+        public final int stage;
+        /** 发送者昵称；MERGE 等场景可能为空。 */
+        public final String sender;
+        /** DONE 为新增条数，MERGE 为建议条数。 */
+        public final int count;
+
+        public NotifProgress(int stage, String sender, int count) {
+            this.stage = stage;
+            this.sender = sender;
+            this.count = count;
         }
     }
 
@@ -105,29 +141,38 @@ public final class ServiceState {
         }
     }
 
-    public static LiveData<Long> aliasPrompt() {
+    public static LiveData<AliasPrompt> aliasPrompt() {
         return sAliasPrompt;
     }
 
-    /** 主线程调用。只保留最近一张截图。 */
-    static void requestAliasPrompt(long jobId) {
-        sAliasPrompt.setValue(jobId);
+    /** 主线程调用。只保留最近一个。 */
+    static void requestAliasPrompt(long jobId, boolean notification) {
+        sAliasPrompt.setValue(new AliasPrompt(jobId, notification));
     }
 
     /** 主线程调用：指定窗口已经弹出。 */
-    public static void clearAliasPrompt(long jobId) {
-        Long pending = sAliasPrompt.getValue();
-        if (pending != null && pending == jobId) {
-            sAliasPrompt.setValue(NO_PROMPT);
+    public static void clearAliasPrompt(AliasPrompt prompt) {
+        AliasPrompt pending = sAliasPrompt.getValue();
+        if (pending != null && pending.jobId == prompt.jobId
+                && pending.notification == prompt.notification) {
+            sAliasPrompt.setValue(null);
         }
     }
 
-    public static LiveData<List<Long>> aliasWaiting() {
+    public static LiveData<List<AliasPrompt>> aliasWaiting() {
         return sAliasWaiting;
     }
 
-    static void setAliasWaiting(List<Long> jobIds) {
-        sAliasWaiting.postValue(new ArrayList<>(jobIds));
+    static void setAliasWaiting(List<AliasPrompt> prompts) {
+        sAliasWaiting.postValue(new ArrayList<>(prompts));
+    }
+
+    public static LiveData<NotifProgress> notifProgress() {
+        return sNotifProgress;
+    }
+
+    public static void setNotifProgress(NotifProgress progress) {
+        sNotifProgress.postValue(progress);
     }
 
     public static void setUiVisible(boolean visible) {

@@ -12,6 +12,9 @@ public interface UserFactDao {
     @Insert
     void insertAll(List<UserFact> facts);
 
+    @Insert
+    long insert(UserFact fact);
+
     @Query("SELECT * FROM user_facts WHERE userId = :userId AND done = 0 ORDER BY createdAt DESC")
     List<UserFact> getPending(long userId);
 
@@ -40,4 +43,9 @@ public interface UserFactDao {
 
     @Query("UPDATE user_facts SET userId = :to WHERE userId = :from")
     void reassignUser(long from, long to);
+
+    /** 待办合并：保留的那条写入合并后的内容；被吸收的那条另行 {@link #delete}。 */
+    @Query("UPDATE user_facts SET content = :content, dueTime = :time, location = :location, people = :people, "
+            + "updatedAt = :at WHERE id = :id")
+    void applyMerge(long id, String content, String time, String location, String people, long at);
 }

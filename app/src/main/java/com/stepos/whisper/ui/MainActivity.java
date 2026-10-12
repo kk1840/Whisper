@@ -36,6 +36,7 @@ import com.stepos.whisper.databinding.DialogThresholdBinding;
 import com.stepos.whisper.databinding.SheetMoreBinding;
 import com.stepos.whisper.glasses.GlassesManager;
 import com.stepos.whisper.glasses.GlassesPairingActivity;
+import com.stepos.whisper.notification.NotificationAccessHelper;
 import com.stepos.whisper.service.RecordingService;
 import com.stepos.whisper.service.ServiceState;
 import com.stepos.whisper.service.TranscriptLine;
@@ -70,8 +71,11 @@ public class MainActivity extends AppCompatActivity {
     /** 上方卡片区当前显示待办还是事实。 */
     private int mCardKind = UserFact.KIND_TODO;
     private List<FactCard> mPendingCards = new ArrayList<>();
-    /** 等着机主指定昵称的截图任务。 */
-    private List<Long> mAliasJobs = new ArrayList<>();
+    /** 等着机主指定昵称的任务（截图或微信通知）。 */
+    private List<ServiceState.AliasPrompt> mAliasJobs = new ArrayList<>();
+    /** 微信消息进度条自动隐藏。 */
+    private final Runnable mHideNotifBanner = () ->
+            mBinding.notificationBanner.setVisibility(View.GONE);
     /**
      * 机主声纹的检查已经完成（有机主，或机主选了稍后再说）。之后每次回到主界面，
      * 录音服务不在（比如重新录入声纹时被停掉又中途退出）就重新拉起。
@@ -110,6 +114,7 @@ public class MainActivity extends AppCompatActivity {
         ServiceState.strangerPrompt().observe(this, this::promptStranger);
         ServiceState.aliasPrompt().observe(this, this::promptAlias);
         ServiceState.aliasWaiting().observe(this, this::renderAliasBanner);
+        ServiceState.notifProgress().observe(this, this::renderNotifProgress);
         AppDatabase.IO.execute(() -> {
             User owner = AppDatabase.get(this).userDao().getOwner();
             boolean noLocalUsers = AppDatabase.get(this).userDao().getAll().isEmpty();
@@ -273,16 +278,16 @@ public class MainActivity extends AppCompatActivity {
         startActivity(SpeakerEditActivity.createPromptIntent(this, userId));
     }
 
-    /** 聊天截图里出现了没对应过的昵称，而且此时就在主界面：直接弹出指定窗口，不用去点灵动岛。 */
-    private void promptAlias(long jobId) {
-        if (jobId == ServiceState.NO_PROMPT) {
+    /** 聊天截图或微信通知里出现了没对应过的昵称，而且此时就在主界面：直接弹出指定窗口，不用去点灵动岛。 */
+    private void promptAlias(ServiceState.AliasPrompt prompt) {
+        if (prompt == null) {
             return;
         }
-        ServiceState.clearAliasPrompt(jobId);
-        startActivity(ChatAliasActivity.createIntent(this, jobId));
+        ServiceState.clearAliasPrompt(prompt);
+        startActivity(ChatAliasActivity.createIntent(this, prompt.jobId, prompt.notification));
     }
 
-    private void renderAliasBanner(List<Long> jobs) {
+    private void renderAliasBanner(List<ServiceState.AliasPrompt> jobs) {
         mAliasJobs = jobs == null ? new ArrayList<>() : jobs;
         mBinding.aliasBanner.setVisibility(mAliasJobs.isEmpty() ? View.GONE : View.VISIBLE);
         if (!mAliasJobs.isEmpty()) {
@@ -294,7 +299,46 @@ public class MainActivity extends AppCompatActivity {
         if (mAliasJobs.isEmpty()) {
             return;
         }
-        startActivity(ChatAliasActivity.createIntent(this, mAliasJobs.get(0)));
+        ServiceState.AliasPrompt first = mAliasJobs.get(0);
+        startActivity(ChatAliasActivity.createIntent(this, first.jobId, first.notification));
+    }
+
+    /** 微信消息的识别进度：收到 → AI 识别中 → 结果（完成类状态几秒后自动收起）。 */
+    private void renderNotifProgress(ServiceState.NotifProgress p) {
+        mBinding.notificationBanner.removeCallbacks(mHideNotifBanner);
+        if (p == null) {
+            mBinding.notificationBanner.setVisibility(View.GONE);
+            return;
+        }
+        String text;
+        switch (p.stage) {
+            case ServiceState.NotifProgress.ALIAS:
+                text = getString(R.string.notif_progress_alias, p.sender);
+                break;
+            case ServiceState.NotifProgress.DONE:
+                text = getString(R.string.notif_progress_done, p.sender, p.count);
+                break;
+            case ServiceState.NotifProgress.NONE:
+                text = getString(R.string.notif_progress_none, p.sender);
+                break;
+            case ServiceState.NotifProgress.MERGE:
+                text = getString(R.string.notif_progress_merge, p.count);
+                break;
+            case ServiceState.NotifProgress.IGNORED:
+                text = getString(R.string.notif_progress_ignored, p.sender);
+                break;
+            default:
+                text = getString(R.string.notif_progress_received, p.sender);
+                break;
+        }
+        mBinding.notificationBannerText.setText(text);
+        mBinding.notificationBanner.setVisibility(View.VISIBLE);
+        if (p.stage == ServiceState.NotifProgress.DONE || p.stage == ServiceState.NotifProgress.NONE
+                || p.stage == ServiceState.NotifProgress.IGNORED) {
+            mBinding.notificationBanner.postDelayed(mHideNotifBanner, 4000);
+        } else if (p.stage == ServiceState.NotifProgress.MERGE) {
+            mBinding.notificationBanner.postDelayed(mHideNotifBanner, 8000);
+        }
     }
 
     @Override
@@ -693,6 +737,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         b.rowScreenshot.setOnClickListener(v -> b.switchScreenshot.toggle());
+
+        b.switchNotification.setChecked(Settings.isNotificationWatchEnabled(this)
+                && NotificationAccessHelper.isEnabled(this));
+        b.switchNotification.setOnCheckedChangeListener((v, checked) -> {
+            Settings.setNotificationWatchEnabled(this, checked);
+            if (checked && !NotificationAccessHelper.ensureEnabled(this)) {
+                Toast.makeText(this, R.string.notification_access_failed, Toast.LENGTH_LONG).show();
+            }
+        });
+        b.rowNotification.setOnClickListener(v -> b.switchNotification.toggle());
 
         b.thresholdValue.setText(getString(R.string.threshold_value, Settings.getSpeakerThreshold(this)));
         b.rowThreshold.setOnClickListener(v -> {

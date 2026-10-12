@@ -18,6 +18,8 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.stepos.whisper.R;
 import com.stepos.whisper.data.AppDatabase;
+import com.stepos.whisper.data.AliasWorker;
+import com.stepos.whisper.data.PendingAlias;
 import com.stepos.whisper.data.User;
 import com.stepos.whisper.data.UserColors;
 import com.stepos.whisper.databinding.ActivityChatAliasBinding;
@@ -28,20 +30,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 对话框样式：聊天截图里出现了还没对应过的昵称，让机主指定它是哪位已有用户、新建一个人，或者忽略。
- * 一张截图里有多个新昵称时逐个询问。指定过一次后同名昵称以后自动对应。
+ * 对话框样式：聊天截图或微信通知里出现了还没对应过的昵称，让机主指定它是哪位已有用户、新建一个人，
+ * 或者忽略。一批里有多个新昵称时逐个询问。指定过一次后同名昵称以后自动对应。
  * 昵称和某个人的名字、已对应过的昵称相似时会预先选中那个人，机主确认一下就行。
  */
 public class ChatAliasActivity extends AppCompatActivity {
     private static final String EXTRA_JOB_ID = "job_id";
+    private static final String EXTRA_FROM_NOTIFICATION = "from_notification";
 
-    public static Intent createIntent(Context context, long jobId) {
-        return new Intent(context, ChatAliasActivity.class).putExtra(EXTRA_JOB_ID, jobId);
+    public static Intent createIntent(Context context, long jobId, boolean fromNotification) {
+        return new Intent(context, ChatAliasActivity.class)
+                .putExtra(EXTRA_JOB_ID, jobId)
+                .putExtra(EXTRA_FROM_NOTIFICATION, fromNotification);
     }
 
     private ActivityChatAliasBinding mBinding;
     private long mJobId;
-    private ScreenshotWorker.PendingAlias mPending;
+    private boolean mFromNotification;
+    private PendingAlias mPending;
     private List<User> mUsers = new ArrayList<>();
     /** 选中的已有用户 id；没选时为 -1。 */
     private long mSelectedUserId = -1;
@@ -53,6 +59,7 @@ public class ChatAliasActivity extends AppCompatActivity {
         setContentView(mBinding.getRoot());
         setFinishOnTouchOutside(false);
         mJobId = getIntent().getLongExtra(EXTRA_JOB_ID, -1);
+        mFromNotification = getIntent().getBooleanExtra(EXTRA_FROM_NOTIFICATION, false);
 
         RecordingService service = RecordingService.getInstance();
         if (service != null) {
@@ -99,14 +106,17 @@ public class ChatAliasActivity extends AppCompatActivity {
         load();
     }
 
-    private ScreenshotWorker worker() {
+    private AliasWorker worker() {
         RecordingService service = RecordingService.getInstance();
-        return service == null ? null : service.getScreenshots();
+        if (service == null) {
+            return null;
+        }
+        return mFromNotification ? service.getNotifications() : service.getScreenshots();
     }
 
     /** 用户列表和下一个待指定的昵称在同一个数据库线程任务里取，保证两者一起到、顺序正确。 */
     private void load() {
-        ScreenshotWorker worker = worker();
+        AliasWorker worker = worker();
         if (worker == null) {
             Toast.makeText(this, R.string.service_not_running, Toast.LENGTH_SHORT).show();
             finish();
@@ -115,7 +125,7 @@ public class ChatAliasActivity extends AppCompatActivity {
         mBinding.save.setEnabled(false);
         AppDatabase.IO.execute(() -> {
             List<User> users = AppDatabase.get(this).userDao().getAll();
-            ScreenshotWorker.PendingAlias pending = worker.findPendingAlias(mJobId);
+            PendingAlias pending = worker.findPendingAlias(mJobId);
             runOnUiThread(() -> {
                 if (isFinishing()) {
                     return;
@@ -130,10 +140,11 @@ public class ChatAliasActivity extends AppCompatActivity {
         });
     }
 
-    private void bind(ScreenshotWorker.PendingAlias pending) {
+    private void bind(PendingAlias pending) {
         mPending = pending;
         mBinding.save.setEnabled(true);
-        mBinding.title.setText(getString(R.string.alias_title, pending.name));
+        mBinding.title.setText(getString(mFromNotification
+                ? R.string.alias_title_notification : R.string.alias_title, pending.name));
         mBinding.remaining.setVisibility(pending.remaining > 1 ? View.VISIBLE : View.GONE);
         mBinding.remaining.setText(getString(R.string.alias_remaining, pending.remaining - 1));
         StringBuilder sb = new StringBuilder();
@@ -193,7 +204,7 @@ public class ChatAliasActivity extends AppCompatActivity {
     }
 
     private void save() {
-        ScreenshotWorker worker = worker();
+        AliasWorker worker = worker();
         if (mPending == null || worker == null) {
             finish();
             return;
@@ -212,7 +223,7 @@ public class ChatAliasActivity extends AppCompatActivity {
     }
 
     private void ignore() {
-        ScreenshotWorker worker = worker();
+        AliasWorker worker = worker();
         if (mPending == null || worker == null) {
             finish();
             return;

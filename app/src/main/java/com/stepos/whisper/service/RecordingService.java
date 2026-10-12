@@ -39,8 +39,12 @@ import com.stepos.whisper.data.Utterance;
 import com.stepos.whisper.glasses.GlassesManager;
 import com.stepos.whisper.live.LiveNotifier;
 import com.stepos.whisper.llm.ExtractionWorker;
+import com.stepos.whisper.llm.FactSaver;
+import com.stepos.whisper.llm.MergeSuggestion;
+import com.stepos.whisper.notification.NotificationWorker;
 import com.stepos.whisper.screenshot.ScreenshotWatcher;
 import com.stepos.whisper.screenshot.ScreenshotWorker;
+import com.stepos.whisper.ui.MergeOverlay;
 import com.stepos.whisper.ui.ReminderOverlay;
 import com.stepos.whisper.voiceprint.VoiceprintLibrary;
 
@@ -130,8 +134,13 @@ public class RecordingService extends Service implements ConversationManager.Lis
     private ExtractionWorker mExtraction;
     private ScreenshotWorker mScreenshots;
     private ScreenshotWatcher mWatcher;
+    private NotificationWorker mNotifications;
     private ReminderOverlay mOverlay;
+    private MergeOverlay mMergeOverlay;
     private LiveNotifier mLive;
+    /** 截图与微信通知两条链各自“昵称等指定”的任务，合并成一条提示给主界面。worker 线程写，主线程读。 */
+    private final List<ServiceState.AliasPrompt> mScreenshotWaiting = new ArrayList<>();
+    private final List<ServiceState.AliasPrompt> mNotificationWaiting = new ArrayList<>();
     private final Observer<ServiceState.AiStatus> mAiObserver = s -> mLive.onAiStatus(s);
     private PowerManager.WakeLock mWakeLock;
     private ConnectivityManager.NetworkCallback mNetworkCallback;
@@ -208,6 +217,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
             }
         });
         mOverlay = new ReminderOverlay(this);
+        mMergeOverlay = new MergeOverlay(this);
         mLive = new LiveNotifier(this);
         mConversations = new ConversationManager(this);
         mLiveCaption = Settings.isLiveCaptionEnabled(this);
@@ -227,9 +237,9 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 // 在本应用里：直接弹出指定窗口；不在时：灵动岛双按钮卡片“以后再说 / 指定”。
                 mMain.post(() -> {
                     if (ServiceState.isUiVisible()) {
-                        ServiceState.requestAliasPrompt(jobId);
+                        ServiceState.requestAliasPrompt(jobId, false);
                     } else {
-                        mLive.showChatAlias(jobId, names);
+                        mLive.showChatAlias(jobId, names, false);
                     }
                 });
             }
@@ -241,12 +251,66 @@ public class RecordingService extends Service implements ConversationManager.Lis
 
             @Override
             public void onAliasWaiting(List<Long> jobIds) {
-                ServiceState.setAliasWaiting(jobIds);
+                synchronized (mScreenshotWaiting) {
+                    mScreenshotWaiting.clear();
+                    for (long id : jobIds) {
+                        mScreenshotWaiting.add(new ServiceState.AliasPrompt(id, false));
+                    }
+                }
+                publishAliasWaiting();
             }
 
             @Override
             public void onUsersChanged() {
                 reloadUsers();
+            }
+        });
+        mNotifications = new NotificationWorker(this, mDb, new NotificationWorker.Listener() {
+            @Override
+            public void onProgress(NotificationWorker.Stage stage, String sender, int count) {
+                ServiceState.setNotifProgress(new ServiceState.NotifProgress(stage.ordinal(), sender, count));
+            }
+
+            @Override
+            public void onFactsAdded(long userId, List<UserFact> facts) {
+                RecordingService.this.onFactsAdded(userId, facts);
+            }
+
+            @Override
+            public void onAliasNeeded(long jobId, List<String> names) {
+                mMain.post(() -> {
+                    if (ServiceState.isUiVisible()) {
+                        ServiceState.requestAliasPrompt(jobId, true);
+                    } else {
+                        mLive.showChatAlias(jobId, names, true);
+                    }
+                });
+            }
+
+            @Override
+            public void onAliasesResolved() {
+                mMain.post(() -> mLive.cancelChatAlias());
+            }
+
+            @Override
+            public void onAliasWaiting(List<Long> jobIds) {
+                synchronized (mNotificationWaiting) {
+                    mNotificationWaiting.clear();
+                    for (long id : jobIds) {
+                        mNotificationWaiting.add(new ServiceState.AliasPrompt(id, true));
+                    }
+                }
+                publishAliasWaiting();
+            }
+
+            @Override
+            public void onUsersChanged() {
+                reloadUsers();
+            }
+
+            @Override
+            public void onMergeSuggested(MergeSuggestion suggestion) {
+                showMergeSuggestion(suggestion);
             }
         });
         mWatcher = new ScreenshotWatcher(this, new ScreenshotWatcher.Listener() {
@@ -286,6 +350,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
             public void onAvailable(Network network) {
                 mExtraction.retryPending();
                 mScreenshots.retryPending();
+                mNotifications.retryPending();
             }
         };
         getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(mNetworkCallback);
@@ -321,9 +386,11 @@ public class RecordingService extends Service implements ConversationManager.Lis
         getSystemService(ConnectivityManager.class).unregisterNetworkCallback(mNetworkCallback);
         ServiceState.aiStatus().removeObserver(mAiObserver);
         mOverlay.dismiss();
+        mMergeOverlay.dismiss();
         mLive.cancelAll();
         mWatcher.shutdown();
         mScreenshots.shutdown();
+        mNotifications.shutdown();
         mProc.execute(() -> {
             flushTurn();
             mConversations.endAll();
@@ -396,6 +463,39 @@ public class RecordingService extends Service implements ConversationManager.Lis
 
     public ScreenshotWorker getScreenshots() {
         return mScreenshots;
+    }
+
+    public NotificationWorker getNotifications() {
+        return mNotifications;
+    }
+
+    /** 通知监听服务连上、或有新消息落库后调用：让通知队列立即跑一遍。任意线程。 */
+    public void kickNotifications() {
+        if (mNotifications != null) {
+            mNotifications.retryPending();
+        }
+    }
+
+    /** 微信新消息的待办和已有待办疑似同一件事：全屏弹两张卡片让机主裁决（worker 线程或任意线程）。 */
+    public void showMergeSuggestion(MergeSuggestion suggestion) {
+        mMain.post(() -> {
+            if (!mMergeOverlay.show(suggestion, () -> AppDatabase.IO.execute(
+                    () -> FactSaver.applyMerge(mDb, suggestion)))) {
+                Log.w(TAG, "merge overlay unavailable, keeping both todos");
+            }
+        });
+    }
+
+    /** 两条“昵称等指定”链的任务合成一条提示（截图 + 微信通知）。任意线程。 */
+    private void publishAliasWaiting() {
+        List<ServiceState.AliasPrompt> all;
+        synchronized (mScreenshotWaiting) {
+            synchronized (mNotificationWaiting) {
+                all = new ArrayList<>(mScreenshotWaiting);
+                all.addAll(mNotificationWaiting);
+            }
+        }
+        ServiceState.setAliasWaiting(all);
     }
 
     public void setSpeakerThreshold(float threshold) {
@@ -1141,6 +1241,11 @@ public class RecordingService extends Service implements ConversationManager.Lis
 
     public LiveNotifier getLive() {
         return mLive;
+    }
+
+    /** 后台线程弹个 Toast（调试触发用）。 */
+    public void toastFromBackground(String message) {
+        mMain.post(() -> android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show());
     }
 
     // ---------------------------------------------------------------- 常驻通知（灵动岛录音卡片）

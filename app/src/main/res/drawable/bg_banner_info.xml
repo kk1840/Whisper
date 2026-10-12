@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主界面上的信息提示条（微信消息识别进度），淡主色底。 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/colorControlHighlight">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1A3D5AFE" />
+            <corners android:radius="@dimen/corner_s" />
+        </shape>
+    </item>
+</ripple>

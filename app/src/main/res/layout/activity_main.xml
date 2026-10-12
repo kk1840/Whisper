@@ -226,6 +226,36 @@
                 app:tint="@color/state_warn" />
         </LinearLayout>
 
+        <!-- 微信消息识别进度：识别到 → 正在 AI 识别 → 结果 -->
+        <LinearLayout
+            android:id="@+id/notification_banner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_banner_info"
+            android:gravity="center_vertical"
+            android:minHeight="36dp"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chat"
+                app:tint="@color/state_busy" />
+
+            <TextView
+                android:id="@+id/notification_banner_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="13sp" />
+        </LinearLayout>
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/users"
             android:layout_width="match_parent"

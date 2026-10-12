@@ -13,8 +13,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Database(entities = {User.class, Utterance.class, UserFact.class, PendingExtraction.class, ChatAlias.class,
-        ScreenshotJob.class},
-        version = 8)
+        ScreenshotJob.class, NotificationJob.class},
+        version = 9)
 public abstract class AppDatabase extends RoomDatabase {
     /** 界面发起的数据库写操作统一在这里执行。 */
     public static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r, "db-io"));
@@ -32,6 +32,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract ChatAliasDao chatAliasDao();
 
     public abstract ScreenshotJobDao screenshotJobDao();
+
+    public abstract NotificationJobDao notificationJobDao();
 
     static final Migration MIGRATION_1_2 = new Migration(1, 2) {
         @Override
@@ -101,6 +103,16 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /** 微信通知消息的处理队列。 */
+    static final Migration MIGRATION_8_9 = new Migration(8, 9) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `notification_jobs` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                    + "`sender` TEXT NOT NULL, `text` TEXT NOT NULL, `postTime` INTEGER NOT NULL, "
+                    + "`attempts` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)");
+        }
+    };
+
     public static AppDatabase get(Context context) {
         if (sInstance == null) {
             synchronized (AppDatabase.class) {
@@ -108,7 +120,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     sInstance = Room.databaseBuilder(context.getApplicationContext(),
                                     AppDatabase.class, "whisper.db")
                             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                             .build();
                 }
             }

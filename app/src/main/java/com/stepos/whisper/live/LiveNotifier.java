@@ -419,15 +419,17 @@ public class LiveNotifier {
 
     // ---------------------------------------------------------------- 聊天截图新昵称
 
-    /** 聊天截图里出现了还没对应到用户的昵称。只保留最近一张截图的；点“指定”打开对应窗口。 */
-    public void showChatAlias(long jobId, List<String> names) {
+    /** 聊天截图或微信通知里出现了还没对应到用户的昵称。只保留最近一个的；点“指定”打开对应窗口。 */
+    public void showChatAlias(long jobId, List<String> names, boolean notification) {
         Context c = mContext;
         String shown = String.join("、", names);
-        String title = c.getString(R.string.live_alias_title);
+        String title = c.getString(notification
+                ? R.string.live_alias_title_notification : R.string.live_alias_title);
         String content = names.size() == 1 ? c.getString(R.string.live_alias_content, shown)
                 : c.getString(R.string.live_alias_content_many, shown, names.size());
         PendingIntent assign = PendingIntent.getActivity(c, 5000,
-                ChatAliasActivity.createIntent(c, jobId).putExtra(LiveExtras.INTENT_DISMISS_PANEL, true),
+                ChatAliasActivity.createIntent(c, jobId, notification)
+                        .putExtra(LiveExtras.INTENT_DISMISS_PANEL, true),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent later = PendingIntent.getBroadcast(c, 5001,
                 new Intent(c, LiveActionReceiver.class).setAction(LiveActionReceiver.ACTION_ALIAS_LATER),

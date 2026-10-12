@@ -12,8 +12,10 @@ import android.util.Log;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.stepos.whisper.BuildConfig;
+import com.stepos.whisper.data.AliasWorker;
 import com.stepos.whisper.data.AppDatabase;
 import com.stepos.whisper.data.ChatAlias;
+import com.stepos.whisper.data.PendingAlias;
 import com.stepos.whisper.data.ScreenshotJob;
 import com.stepos.whisper.data.User;
 import com.stepos.whisper.data.UserColors;
@@ -57,7 +59,7 @@ import java.util.concurrent.TimeUnit;
  * 处理在 screenshot 线程上串行进行；机主在界面上指定昵称时的数据库读写走 {@link AppDatabase#IO}，
  * 保证“写入对应关系”一定先于“查下一个待指定昵称”，再回到 screenshot 线程继续处理。
  */
-public class ScreenshotWorker {
+public class ScreenshotWorker implements AliasWorker {
     private static final String TAG = "ScreenshotWorker";
     private static final int MAX_REJECTED_ATTEMPTS = 3;
     private static final int[] RETRY_DELAYS_S = {5, 10, 20, 40, 60, 120, 300};
@@ -105,26 +107,6 @@ public class ScreenshotWorker {
 
         /** 从截图昵称新建了用户（数据库线程）。 */
         void onUsersChanged();
-    }
-
-    /** 等机主指定的一个昵称及其上下文。 */
-    public static final class PendingAlias {
-        public final long jobId;
-        public final String name;
-        /** 这个昵称在截图里说的话（最多几条）。 */
-        public final List<String> messages;
-        /** 这张截图里还有几个昵称等待指定（含这个）。 */
-        public final int remaining;
-        /** 看起来像是这位用户（名字或以前的昵称相似），-1 表示没有推荐。 */
-        public final long suggestedUserId;
-
-        PendingAlias(long jobId, String name, List<String> messages, int remaining, long suggestedUserId) {
-            this.jobId = jobId;
-            this.name = name;
-            this.messages = messages;
-            this.remaining = remaining;
-            this.suggestedUserId = suggestedUserId;
-        }
     }
 
     private final Context mContext;
@@ -211,6 +193,7 @@ public class ScreenshotWorker {
      * 查某张截图里下一个等待指定的昵称；都已指定（或截图已处理完）时返回 null。
      * 只读数据库，必须在后台线程（建议 {@link AppDatabase#IO}）调用。
      */
+    @Override
     public PendingAlias findPendingAlias(long jobId) {
         ScreenshotJob job = mDb.screenshotJobDao().get(jobId);
         ChatParse parse = job == null ? null : parse(job);
@@ -227,6 +210,7 @@ public class ScreenshotWorker {
     }
 
     /** 机主指定昵称对应的用户；userId 为 null 表示忽略这个昵称。任意线程。 */
+    @Override
     public void setAlias(String name, Long userId) {
         AppDatabase.IO.execute(() -> {
             putAlias(name, userId);
@@ -235,6 +219,7 @@ public class ScreenshotWorker {
     }
 
     /** 机主为昵称新建一个用户（还没有声纹，之后可以补录）。任意线程。 */
+    @Override
     public void createUserForAlias(String name, String userName) {
         AppDatabase.IO.execute(() -> {
             long now = System.currentTimeMillis();

@@ -105,6 +105,46 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
+        <!-- 读取微信通知 -->
+        <LinearLayout
+            android:id="@+id/row_notification"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_row"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/row_min_height"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chat" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Whisper.RowTitle"
+                    android:text="@string/menu_notification_watch" />
+
+                <TextView
+                    style="@style/Widget.Whisper.RowSubtitle"
+                    android:text="@string/menu_notification_watch_hint" />
+            </LinearLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_notification"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
         <!-- 声纹识别阈值 -->
         <LinearLayout
             android:id="@+id/row_threshold"
