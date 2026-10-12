@@ -10,6 +10,9 @@ if (localPropsFile.exists()) {
     localPropsFile.withInputStream { localProps.load(it) }
 }
 def stepfunApiKey = localProps.getProperty('stepfun.apiKey', System.getenv('STEPFUN_API_KEY') ?: '')
+def xfyunAppId = localProps.getProperty('xfyun.appid', System.getenv('XFYUN_APPID') ?: '')
+def xfyunApiKey = localProps.getProperty('xfyun.apiKey', System.getenv('XFYUN_API_KEY') ?: '')
+def xfyunApiSecret = localProps.getProperty('xfyun.apiSecret', System.getenv('XFYUN_API_SECRET') ?: '')
 
 android {
     namespace 'com.stepos.whisper'
@@ -28,6 +31,9 @@ android {
         }
 
         buildConfigField 'String', 'STEPFUN_API_KEY', "\"${stepfunApiKey}\""
+        buildConfigField 'String', 'XFYUN_APP_ID', "\"${xfyunAppId}\""
+        buildConfigField 'String', 'XFYUN_API_KEY', "\"${xfyunApiKey}\""
+        buildConfigField 'String', 'XFYUN_API_SECRET', "\"${xfyunApiSecret}\""
 
         javaCompileOptions {
             annotationProcessorOptions {

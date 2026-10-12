@@ -4,14 +4,13 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Typeface;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
-import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.Looper;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -26,27 +25,27 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.k2fsa.sherpa.onnx.OnlineRecognizer;
-import com.k2fsa.sherpa.onnx.OnlineStream;
 import com.stepos.whisper.R;
+import com.stepos.whisper.asr.ChineseTextFilter;
 import com.stepos.whisper.asr.ModelManager;
+import com.stepos.whisper.asr.PcmTimeline;
 import com.stepos.whisper.asr.ReadingTracker;
-import com.stepos.whisper.asr.SpeechChunk;
-import com.stepos.whisper.asr.VadSegmenter;
+import com.stepos.whisper.asr.StepAsrStreamClient;
 import com.stepos.whisper.data.AppDatabase;
 import com.stepos.whisper.data.User;
 import com.stepos.whisper.data.UserColors;
 import com.stepos.whisper.databinding.ActivityVoiceEnrollBinding;
 import com.stepos.whisper.service.RecordingService;
-import com.stepos.whisper.speaker.EmbeddingUtils;
-import com.stepos.whisper.speaker.SpeakerRecognizer;
+import com.stepos.whisper.voiceprint.VoiceprintLibrary;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 朗读一段文字录入声纹：VAD 切出有效语音后提取声纹取平均。三种用途：
+ * 朗读一段文字录入云端声纹：Step 流式识别跟读进度，server_vad 累计语音时长，
+ * 读够后把切出的句子（每条 3~8 秒）注册成讯飞声纹特征。三种用途：
  * <ul>
  *   <li>机主：首次进入应用时弹窗询问，可以直接录或稍后再说，也可重新录入；</li>
  *   <li>新用户：主动给身边的人建档；</li>
@@ -62,11 +61,16 @@ public class VoiceEnrollActivity extends AppCompatActivity {
     private static final int MODE_NEW_USER = 1;
     private static final int MODE_ADD_VOICE = 2;
 
-    /** 有效语音至少这么长，声纹才可靠。正常读完全文约 20 秒。 */
-    private static final long MIN_SPEECH_MS = 8_000;
+    /** 有效语音至少这么长，声纹才可靠。正常读完全文约 12 秒。 */
+    private static final long MIN_SPEECH_MS = 6_000;
     /** 原文读到这个比例（模糊匹配）即可完成。 */
     private static final int DONE_PERCENT = 90;
-    private static final long MIN_CHUNK_MS = 1000;
+    /** 单句短于这个时长不入库（切句用）。 */
+    private static final long MIN_CLIP_MS = 1500;
+    /** 注册云端时每条声纹的时长窗口：3~8 秒，最多注册 3 条。 */
+    private static final long ENROLL_MIN_MS = 3000;
+    private static final long ENROLL_MAX_MS = 8000;
+    private static final int ENROLL_MAX_CLIPS = 3;
     private static final int FRAME_SAMPLES = ModelManager.SAMPLE_RATE / 10;
 
     public static Intent createOwnerIntent(Context context, boolean reenroll) {
@@ -92,25 +96,24 @@ public class VoiceEnrollActivity extends AppCompatActivity {
     private String mTargetName = "";
     /** 录入别人时暂停了录音服务，结束后恢复。 */
     private boolean mResumeService;
-    private HandlerThread mWorkerThread;
-    private Handler mWorker;
-    private ModelManager mModels;
-    private VadSegmenter mVad;
-    private SpeakerRecognizer mSpeaker;
-    private boolean mModelsReady;
 
-    // worker 线程
-    private final List<float[]> mEmbeddings = new ArrayList<>();
-    private final List<float[]> mSpeech = new ArrayList<>();
-    private long mSpeechMs;
-    private OnlineRecognizer mOnline;
-    private OnlineStream mStream;
-    private String mRecognized = "";
+    private PcmTimeline mTimeline;
+    private StepAsrStreamClient mStream;
+    private VoiceprintLibrary mLibrary;
 
+    // 流式回调线程写、主线程读
+    private final List<byte[]> mClips = new ArrayList<>();
+    private volatile long mSpeechMs;
+    private volatile long mLastReportMs;
+    private volatile String mRecognized = "";
+    /** 本连接内上一条累计字幕，onPartial 用来截增量；续录/重连后字幕重新从头累计，
+     *  前缀对不上时增量记 0（那段音频识别过，重复喂反而可能错位）。仅流式回调线程访问。 */
+    private String mPrevPartial = "";
     // 主线程
     private ReadingTracker mTracker;
-    private int mReadProgress;
     private boolean mFinished;
+    private boolean mReady;
+    private boolean mSaving;
     private int mHighlightFg;
     private int mHighlightBg;
 
@@ -175,7 +178,6 @@ public class VoiceEnrollActivity extends AppCompatActivity {
         mHighlightFg = getColor(R.color.read_text);
         mHighlightBg = getColor(R.color.read_bg);
         renderPassage(0);
-        mBinding.status.setText(R.string.enroll_loading);
         mBinding.record.setOnClickListener(v -> {
             if (mRecording) {
                 stopRecording();
@@ -185,32 +187,75 @@ public class VoiceEnrollActivity extends AppCompatActivity {
         });
         mBinding.done.setOnClickListener(v -> save());
 
-        mWorkerThread = new HandlerThread("enroll");
-        mWorkerThread.start();
-        mWorker = new Handler(mWorkerThread.getLooper());
-        mModels = new ModelManager();
-        mWorker.post(() -> {
-            try {
-                mModels.loadEnrollment();
-                mModels.loadStreaming();
-                mVad = new VadSegmenter(mModels.getVad());
-                mSpeaker = new SpeakerRecognizer(mModels.getSpeakerExtractor(), 0.5f);
-                mOnline = mModels.getOnlineRecognizer();
-                mStream = mOnline.createStream("");
-            } catch (Throwable t) {
-                Log.e(TAG, "load failed", t);
-                mMain.post(() -> mBinding.status.setText(getString(R.string.status_error, t.getMessage())));
-                return;
-            }
-            mMain.post(() -> {
-                mModelsReady = true;
-                mBinding.record.setEnabled(true);
-                mBinding.status.setText(R.string.enroll_ready);
-            });
-        });
+        mTimeline = new PcmTimeline(120);
+        mLibrary = new VoiceprintLibrary(com.stepos.whisper.Settings.getSpeakerThreshold(this));
+        mStream = new StepAsrStreamClient(mTimeline, mEnrollListener);
+        if (!mStream.hasApiKey() || !mLibrary.hasCredentials()) {
+            mBinding.status.setText("未配置云端密钥，无法录入");
+            return;
+        }
+        mReady = true;
+        mBinding.record.setEnabled(true);
+        mBinding.status.setText(R.string.enroll_ready);
 
         requestPermissions();
     }
+
+    private final StepAsrStreamClient.Listener mEnrollListener = new StepAsrStreamClient.Listener() {
+        @Override
+        public void onPartial(String text) {
+            if (text == null || mFinished) {
+                return;
+            }
+            // 字幕是本连接的累计全量，进度匹配只喂自上一条以来新增的部分：
+            // 暂停续录/断线重连后字幕从头累计，整体重算会让进度冻结在断点前。
+            String delta = text.length() > mPrevPartial.length() && text.startsWith(mPrevPartial)
+                    ? text.substring(mPrevPartial.length()) : "";
+            mPrevPartial = text;
+            mRecognized = ChineseTextFilter.apply(text);
+            mMain.post(() -> {
+                if (mFinished) {
+                    return;
+                }
+                if (!delta.isEmpty()) {
+                    mTracker.advance(ChineseTextFilter.apply(delta));
+                }
+                renderProgress(mRecognized, mSpeechMs, !mClips.isEmpty(), false);
+            });
+        }
+
+        @Override
+        public void onSentence(String transcript, long startByte, long endByte) {
+            byte[] pcm = mTimeline.cutGlobal(startByte, endByte);
+            long ms = pcm == null ? 0 : pcm.length * 1000L / PcmTimeline.BYTES_PER_SEC;
+            if (pcm != null && ms >= MIN_CLIP_MS) {
+                synchronized (mClips) {
+                    mClips.add(pcm);
+                }
+            }
+            if (!mFinished) {
+                mMain.post(() -> renderProgress(mRecognized, mSpeechMs, true, true));
+            }
+        }
+
+        @Override
+        public void onSpeechSeconds(long speechMs) {
+            // 流式连接暂停/重连后服务端计数从 0 开始，这里按增量累计，读完一整段才算数。
+            if (speechMs >= mLastReportMs) {
+                mSpeechMs += speechMs - mLastReportMs;
+            } else {
+                mSpeechMs += speechMs;
+            }
+            mLastReportMs = speechMs;
+        }
+
+        @Override
+        public void onConnectionChange(boolean connected) {
+            if (!connected) {
+                mMain.post(() -> mBinding.status.setText("网络断开，重连中…"));
+            }
+        }
+    };
 
     private void requestPermissions() {
         List<String> wanted = new ArrayList<>();
@@ -244,16 +289,8 @@ public class VoiceEnrollActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         stopRecording();
-        mWorker.post(() -> {
-            if (mStream != null) {
-                mStream.release();
-            }
-            if (mSpeaker != null) {
-                mSpeaker.release();
-            }
-            mModels.release();
-        });
-        mWorkerThread.quitSafely();
+        mStream.stop();
+        mLibrary.shutdown();
         if (mResumeService) {
             RecordingService service = RecordingService.getInstance();
             if (service != null) {
@@ -264,7 +301,7 @@ public class VoiceEnrollActivity extends AppCompatActivity {
     }
 
     private void startRecording() {
-        if (!mModelsReady || mRecording) {
+        if (!mReady || mRecording) {
             return;
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -282,8 +319,9 @@ public class VoiceEnrollActivity extends AppCompatActivity {
             return;
         }
         mRecord = record;
-        long startMs = System.currentTimeMillis();
-        mWorker.post(() -> mVad.start(startMs));
+        mTimeline.clear();
+        mPrevPartial = "";
+        mStream.start();
         record.startRecording();
         mRecording = true;
         mAudioThread = new Thread(this::audioLoop, "enroll-audio");
@@ -306,11 +344,7 @@ public class VoiceEnrollActivity extends AppCompatActivity {
         mRecord.release();
         mRecord = null;
         mAudioThread = null;
-        mWorker.post(() -> {
-            handleChunks(mVad.flush());
-            // 流式模型有几百毫秒的延迟，补一段静音把最后几个字吐出来。
-            onFrame(new float[ModelManager.SAMPLE_RATE * 6 / 10], false);
-        });
+        mStream.stop();
         mBinding.record.setText(R.string.enroll_continue);
         if (!mFinished) {
             mBinding.status.setText(R.string.enroll_paused);
@@ -324,51 +358,17 @@ public class VoiceEnrollActivity extends AppCompatActivity {
             if (n <= 0) {
                 continue;
             }
-            float[] frame = new float[n];
+            byte[] pcm = new byte[n * 2];
             for (int i = 0; i < n; i++) {
-                frame[i] = buf[i] / 32768f;
+                pcm[2 * i] = (byte) buf[i];
+                pcm[2 * i + 1] = (byte) (buf[i] >> 8);
             }
-            mWorker.post(() -> onFrame(frame, true));
+            mStream.acceptFrame(pcm);
         }
-    }
-
-    // worker 线程
-    private void onFrame(float[] frame, boolean feedVad) {
-        mStream.acceptWaveform(frame, ModelManager.SAMPLE_RATE);
-        while (mOnline.isReady(mStream)) {
-            mOnline.decode(mStream);
-        }
-        String text = mOnline.getResult(mStream).getText();
-        boolean textChanged = !text.equals(mRecognized);
-        mRecognized = text;
-        boolean chunkEnded = feedVad && handleChunks(mVad.accept(frame));
-        if (textChanged || chunkEnded) {
-            long speechMs = mSpeechMs;
-            boolean hasVoice = !mEmbeddings.isEmpty();
-            mMain.post(() -> renderProgress(text, speechMs, hasVoice, chunkEnded));
-        }
-    }
-
-    /** 返回是否有句子结束。 */
-    private boolean handleChunks(List<SpeechChunk> chunks) {
-        for (SpeechChunk chunk : chunks) {
-            if (chunk.durationMs() < MIN_CHUNK_MS) {
-                continue;
-            }
-            float[] emb = mSpeaker.extract(chunk.samples);
-            if (emb == null) {
-                continue;
-            }
-            mEmbeddings.add(emb);
-            mSpeech.add(chunk.samples);
-            mSpeechMs += chunk.durationMs();
-        }
-        return !chunks.isEmpty();
     }
 
     private void renderProgress(String recognized, long speechMs, boolean hasVoice, boolean sentenceEnded) {
-        int progress = Math.max(mReadProgress, mTracker.progress(recognized));
-        mReadProgress = progress;
+        int progress = mTracker.position();
         renderPassage(progress);
         int percent = progress * 100 / Math.max(1, mTracker.size());
         mBinding.progress.setProgressCompat(percent, true);
@@ -401,120 +401,140 @@ public class VoiceEnrollActivity extends AppCompatActivity {
     }
 
     private void save() {
+        if (mSaving) {
+            return;
+        }
         CharSequence text = mBinding.name.getText();
         String name = text == null ? "" : text.toString().trim();
         if (TextUtils.isEmpty(name) && mMode != MODE_ADD_VOICE) {
             mBinding.nameLayout.setError(getString(R.string.new_speaker_name_empty));
             return;
         }
+        List<byte[]> clips = pickEnrollClips();
+        if (clips.isEmpty()) {
+            mBinding.nameLayout.setError(null);
+            Toast.makeText(this, "没有录到足够的语音，请再读一遍", Toast.LENGTH_LONG).show();
+            return;
+        }
+        mSaving = true;
         mBinding.nameLayout.setError(null);
         mBinding.done.setEnabled(false);
         mBinding.record.setEnabled(false);
-        mWorker.post(() -> {
-            float[] embedding = buildEmbedding();
-            int count = mEmbeddings.size();
-            if (mMode != MODE_OWNER) {
-                AppDatabase.IO.execute(() -> saveOther(name, embedding, count));
-                return;
-            }
-            AppDatabase.IO.execute(() -> {
-                AppDatabase db = AppDatabase.get(this);
-                User owner = db.userDao().getOwner();
-                long now = System.currentTimeMillis();
-                if (owner == null) {
-                    owner = new User();
-                    owner.isOwner = true;
-                    owner.color = UserColors.OWNER_DEFAULT;
-                    owner.createdAt = now;
-                    owner.name = name;
-                    owner.embedding = EmbeddingUtils.toBytes(embedding);
-                    owner.sampleCount = count;
-                    owner.lastSeenAt = now;
-                    db.userDao().insert(owner);
-                } else {
-                    owner.name = name;
-                    owner.embedding = EmbeddingUtils.toBytes(embedding);
-                    owner.sampleCount = count;
-                    db.userDao().update(owner);
-                }
-                mMain.post(() -> {
-                    startActivity(new Intent(this, MainActivity.class)
-                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
-                    finish();
-                });
-            });
-        });
+        mPendingName = name;
+        AppDatabase.IO.execute(() -> saveAndEnroll(name, clips));
     }
 
-    /** 新用户建档，或把声纹追加为已有用户的额外声纹（db-io 线程）。 */
-    private void saveOther(String name, float[] embedding, int count) {
+    /** save() 时在主线程记下的名字，收尾 toast 用（db-io 线程不能碰 View）。 */
+    private String mPendingName = "";
+
+    private String userNameForToast() {
+        return mPendingName == null || mPendingName.isEmpty() ? mTargetName : mPendingName;
+    }
+
+    /** 挑注册用的句子：优先长的，每条 3~8 秒，最多 3 条。 */
+    private List<byte[]> pickEnrollClips() {
+        List<byte[]> all = new ArrayList<>();
+        synchronized (mClips) {
+            all.addAll(mClips);
+        }
+        all.sort((a, b) -> b.length - a.length);
+        List<byte[]> out = new ArrayList<>();
+        for (byte[] c : all) {
+            int maxBytes = (int) (ENROLL_MAX_MS * PcmTimeline.BYTES_PER_SEC / 1000);
+            if (c.length >= ENROLL_MIN_MS * PcmTimeline.BYTES_PER_SEC / 1000) {
+                out.add(c.length > maxBytes ? copyOf(c, maxBytes) : c);
+            }
+            if (out.size() >= ENROLL_MAX_CLIPS) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static byte[] copyOf(byte[] src, int len) {
+        byte[] out = new byte[len];
+        System.arraycopy(src, 0, out, 0, len);
+        return out;
+    }
+
+    /** db-io 线程：先落库拿到 userId，再逐条注册云端声纹，全部结束后回主线程收尾。 */
+    private void saveAndEnroll(String name, List<byte[]> clips) {
         AppDatabase db = AppDatabase.get(this);
         long now = System.currentTimeMillis();
-        String toast;
-        if (mMode == MODE_NEW_USER) {
-            User user = new User();
+        User user;
+        boolean owner = mMode == MODE_OWNER;
+        if (owner) {
+            user = db.userDao().getOwner();
+            if (user == null) {
+                user = new User();
+                user.isOwner = true;
+                user.color = UserColors.OWNER_DEFAULT;
+                user.createdAt = now;
+                user.lastSeenAt = now;
+                user.name = name;
+                db.userDao().insert(user);
+                user = db.userDao().getOwner();
+            } else {
+                user.name = name;
+                db.userDao().update(user);
+            }
+        } else if (mMode == MODE_NEW_USER) {
+            user = new User();
             user.name = name;
-            user.embedding = EmbeddingUtils.toBytes(embedding);
-            user.sampleCount = count;
             user.createdAt = now;
             user.lastSeenAt = now;
             user.color = UserColors.pickUnused(db.userDao().getAllColors());
-            db.userDao().insert(user);
-            toast = getString(R.string.enroll_saved_new, name);
+            user.id = db.userDao().insert(user);
         } else {
-            User user = db.userDao().get(mTargetUserId);
+            user = db.userDao().get(mTargetUserId);
             if (user == null) {
                 mMain.post(this::finish);
                 return;
             }
-            if (EmbeddingUtils.fromBytes(user.embedding) == null) {
-                user.embedding = EmbeddingUtils.toBytes(embedding);
-                user.sampleCount = count;
-            } else {
-                user.extraEmbeddings = SpeakerRecognizer.appendExtra(user.extraEmbeddings, embedding);
-            }
-            db.userDao().update(user);
-            toast = getString(R.string.enroll_saved_add, mTargetName);
         }
+        final long userId = user.id;
+        final String userName = user.name;
+        final AtomicInteger remaining = new AtomicInteger(clips.size());
+        final AtomicInteger okCount = new AtomicInteger(0);
+        for (byte[] clip : clips) {
+            mLibrary.enroll(userId, userName, owner, clip, (featureId, err) -> {
+                if (err == null && featureId != null) {
+                    okCount.incrementAndGet();
+                    AppDatabase.IO.execute(() -> {
+                        User u = AppDatabase.get(VoiceEnrollActivity.this).userDao().get(userId);
+                        if (u != null) {
+                            u.featureIds = VoiceprintLibrary.appendFeatureId(u.featureIds, featureId);
+                            AppDatabase.get(VoiceEnrollActivity.this).userDao().update(u);
+                        }
+                    });
+                } else {
+                    Log.w(TAG, "enroll failed: " + err);
+                }
+                if (remaining.decrementAndGet() == 0) {
+                    final int total = clips.size();
+                    AppDatabase.IO.execute(() -> finishSave(okCount.get(), total));
+                }
+            });
+        }
+    }
+
+    private void finishSave(int enrolled, int total) {
         RecordingService service = RecordingService.getInstance();
         if (service != null) {
             service.reloadUsers();
         }
+        String toast = enrolled == 0 ? "已保存，但云端声纹注册失败，请检查网络后重试"
+                : mMode == MODE_NEW_USER ? getString(R.string.enroll_saved_new, userNameForToast())
+                : mMode == MODE_ADD_VOICE ? getString(R.string.enroll_saved_add, mTargetName)
+                : "已录入 " + enrolled + "/" + total + " 段声纹";
+        boolean toMain = mMode == MODE_OWNER;
         mMain.post(() -> {
             Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
+            if (toMain) {
+                startActivity(new Intent(this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
             finish();
         });
-    }
-
-    /** 各段声纹的平均与整段拼接后的声纹再平均，兼顾稳定性和整体音色。 */
-    private float[] buildEmbedding() {
-        int dim = mEmbeddings.get(0).length;
-        float[] sum = new float[dim];
-        for (float[] e : mEmbeddings) {
-            for (int i = 0; i < dim; i++) {
-                sum[i] += e[i];
-            }
-        }
-        float[] mean = EmbeddingUtils.normalize(sum);
-
-        int total = 0;
-        for (float[] s : mSpeech) {
-            total += s.length;
-        }
-        float[] all = new float[total];
-        int pos = 0;
-        for (float[] s : mSpeech) {
-            System.arraycopy(s, 0, all, pos, s.length);
-            pos += s.length;
-        }
-        float[] whole = mSpeaker.extract(all);
-        if (whole == null) {
-            return mean;
-        }
-        float[] combined = new float[dim];
-        for (int i = 0; i < dim; i++) {
-            combined[i] = mean[i] + whole[i];
-        }
-        return EmbeddingUtils.normalize(combined);
     }
 }

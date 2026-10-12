@@ -151,13 +151,16 @@ public final class ServiceState {
         sPartial.postValue(text);
     }
 
-    static synchronized void addLine(long timeMs, long endMs, String speaker, String text, long userId, int color,
+    /** 返回该行的 id（声纹结果回来后按 id 补标说话人）。 */
+    static synchronized long addLine(long timeMs, long endMs, String speaker, String text, long userId, int color,
                                      int aiState) {
-        sLineBuffer.add(new TranscriptLine(sNextLineId++, timeMs, endMs, speaker, text, userId, color, aiState));
+        long id = sNextLineId++;
+        sLineBuffer.add(new TranscriptLine(id, timeMs, endMs, speaker, text, userId, color, aiState));
         if (sLineBuffer.size() > MAX_LINES) {
             sLineBuffer.remove(0);
         }
         publish();
+        return id;
     }
 
     static synchronized void clearLines() {

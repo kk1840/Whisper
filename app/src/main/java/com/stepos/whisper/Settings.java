@@ -4,10 +4,16 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 public final class Settings {
-    public static final float DEFAULT_SPEAKER_THRESHOLD = 0.5f;
+    /**
+     * 讯飞声纹 1:N 的默认判定阈值（score 0~1）。实测同一人在 1.5~10 秒段上的 top1 分数
+     * 分布约 0.36~0.80（短段系统性偏低、朗读录入的特征偏低），0.6 会把本人一半的段切掉；
+     * 0.45 能兜住实测最低的自身段（0.50），异人声通常远低于该线（TTS 实测 -0.07）。
+     */
+    public static final float DEFAULT_SPEAKER_THRESHOLD = 0.45f;
 
     private static final String PREFS = "settings";
     private static final String KEY_SPEAKER_THRESHOLD = "speaker_threshold";
+    private static final String KEY_XF_GROUP_READY = "xf_group_ready";
     private static final String KEY_LIVE_CAPTION = "live_caption";
     private static final String KEY_SCREENSHOT_WATCH = "screenshot_watch";
     private static final String KEY_LAST_SCREENSHOT_ID = "last_screenshot_id";
@@ -30,6 +36,15 @@ public final class Settings {
 
     public static void setSpeakerThreshold(Context context, float value) {
         prefs(context).edit().putFloat(KEY_SPEAKER_THRESHOLD, value).apply();
+    }
+
+    /** 讯飞云端声纹分组是否已创建过（createGroup 幂等保护，避免每次启动都调）。 */
+    public static boolean isXfGroupReady(Context context) {
+        return prefs(context).getBoolean(KEY_XF_GROUP_READY, false);
+    }
+
+    public static void setXfGroupReady(Context context, boolean ready) {
+        prefs(context).edit().putBoolean(KEY_XF_GROUP_READY, ready).apply();
     }
 
     public static boolean isLiveCaptionEnabled(Context context) {

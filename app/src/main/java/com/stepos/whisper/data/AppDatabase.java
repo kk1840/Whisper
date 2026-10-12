@@ -14,7 +14,7 @@ import java.util.concurrent.Executors;
 
 @Database(entities = {User.class, Utterance.class, UserFact.class, PendingExtraction.class, ChatAlias.class,
         ScreenshotJob.class},
-        version = 7)
+        version = 8)
 public abstract class AppDatabase extends RoomDatabase {
     /** 界面发起的数据库写操作统一在这里执行。 */
     public static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r, "db-io"));
@@ -92,6 +92,15 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /** 声纹换成讯飞云端（featureId），本地向量作废需重新注册；用户本身和事项保留。 */
+    static final Migration MIGRATION_7_8 = new Migration(7, 8) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("ALTER TABLE users ADD COLUMN featureIds TEXT");
+            db.execSQL("UPDATE users SET embedding = NULL, extraEmbeddings = NULL, sampleCount = 0");
+        }
+    };
+
     public static AppDatabase get(Context context) {
         if (sInstance == null) {
             synchronized (AppDatabase.class) {
@@ -99,7 +108,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     sInstance = Room.databaseBuilder(context.getApplicationContext(),
                                     AppDatabase.class, "whisper.db")
                             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                                    MIGRATION_5_6, MIGRATION_6_7)
+                                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                             .build();
                 }
             }

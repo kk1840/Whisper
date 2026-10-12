@@ -28,6 +28,7 @@ import com.stepos.whisper.Settings;
 import com.stepos.whisper.data.AppDatabase;
 import com.stepos.whisper.data.FactCard;
 import com.stepos.whisper.data.User;
+import com.stepos.whisper.data.UserColors;
 import com.stepos.whisper.data.UserDao;
 import com.stepos.whisper.data.UserFact;
 import com.stepos.whisper.databinding.ActivityMainBinding;
@@ -38,6 +39,8 @@ import com.stepos.whisper.glasses.GlassesPairingActivity;
 import com.stepos.whisper.service.RecordingService;
 import com.stepos.whisper.service.ServiceState;
 import com.stepos.whisper.service.TranscriptLine;
+import com.stepos.whisper.voiceprint.VoiceprintLibrary;
+import com.stepos.whisper.voiceprint.XfVoiceprintClient;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -109,17 +112,118 @@ public class MainActivity extends AppCompatActivity {
         ServiceState.aliasWaiting().observe(this, this::renderAliasBanner);
         AppDatabase.IO.execute(() -> {
             User owner = AppDatabase.get(this).userDao().getOwner();
+            boolean noLocalUsers = AppDatabase.get(this).userDao().getAll().isEmpty();
             runOnUiThread(() -> {
                 if (isFinishing()) {
                     return;
                 }
-                if (owner == null) {
+                if (owner == null && noLocalUsers) {
+                    // 本地一个用户都没有：可能刚重装，云端声纹还在，问问要不要恢复。
+                    maybeOfferCloudRestore();
+                } else if (owner == null) {
                     promptOwnerEnroll();
                 } else {
                     mOwnerChecked = true;
                     ensurePermissionsAndStart();
                 }
             });
+        });
+    }
+
+    /**
+     * 卸载/清数据后本地与云端声纹失联（云端数据不随卸载清除）。查到云端还有特征时，
+     * 按 featureInfo 里存的名字在本地重建用户和 featureId 映射；也可以清空云端重新录入。
+     */
+    private void maybeOfferCloudRestore() {
+        VoiceprintLibrary lib = new VoiceprintLibrary(Settings.getSpeakerThreshold(this));
+        lib.queryCloud((entries, err) -> runOnUiThread(() -> {
+            if (isFinishing()) {
+                return;
+            }
+            if (err != null || entries == null || entries.isEmpty()) {
+                promptOwnerEnroll();
+                return;
+            }
+            StringBuilder names = new StringBuilder();
+            for (XfVoiceprintClient.FeatureEntry e : entries) {
+                String name = restoreName(e.featureInfo);
+                if (name != null && names.indexOf(name) < 0) {
+                    if (names.length() > 0) {
+                        names.append('、');
+                    }
+                    names.append(name);
+                }
+            }
+            final List<XfVoiceprintClient.FeatureEntry> cloud = entries;
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle("发现云端声纹")
+                    .setMessage("云端保存着这些人的声纹：" + names + "。\n恢复后无需重新朗读。"
+                            + "\n\n提示：卸载应用不会清除云端声纹，只有这里能清。")
+                    .setCancelable(false)
+                    .setPositiveButton("恢复", (d, w) ->
+                            AppDatabase.IO.execute(() -> restoreFromCloud(cloud)))
+                    .setNegativeButton("清空重来", (d, w) -> {
+                        List<String> ids = new ArrayList<>();
+                        for (XfVoiceprintClient.FeatureEntry e : cloud) {
+                            ids.add(e.featureId);
+                        }
+                        VoiceprintLibrary.deleteFeaturesQuietly(ids);
+                        promptOwnerEnroll();
+                    })
+                    .setNeutralButton("稍后再说", (d, w) -> {
+                        mOwnerChecked = true;
+                        ensurePermissionsAndStart();
+                    })
+                    .show();
+        }));
+    }
+
+    /** featureInfo 格式 “名字|机主|日期” 或 “名字|日期”，取第一段。 */
+    private static String restoreName(String featureInfo) {
+        if (featureInfo == null || featureInfo.isEmpty()) {
+            return null;
+        }
+        int sep = featureInfo.indexOf('|');
+        String name = sep < 0 ? featureInfo : featureInfo.substring(0, sep);
+        return name.trim().isEmpty() ? null : name.trim();
+    }
+
+    /** db-io 线程：按名字分组重建用户，featureInfo 带机主标记的作为机主。 */
+    private void restoreFromCloud(List<XfVoiceprintClient.FeatureEntry> entries) {
+        AppDatabase db = AppDatabase.get(this);
+        Map<String, User> byName = new HashMap<>();
+        long now = System.currentTimeMillis();
+        for (XfVoiceprintClient.FeatureEntry e : entries) {
+            String name = restoreName(e.featureInfo);
+            if (name == null) {
+                name = "陌生人";
+            }
+            boolean owner = e.featureInfo != null && e.featureInfo.contains("|机主");
+            User user = byName.get(name);
+            if (user == null) {
+                user = new User();
+                user.name = name;
+                user.isOwner = owner;
+                user.createdAt = now;
+                user.lastSeenAt = now;
+                user.color = UserColors.pickUnused(db.userDao().getAllColors());
+                user.id = db.userDao().insert(user);
+                byName.put(name, user);
+            }
+            if (owner && db.userDao().getOwner() == null) {
+                user.isOwner = true;
+            }
+            user.featureIds = VoiceprintLibrary.appendFeatureId(user.featureIds, e.featureId);
+            db.userDao().update(user);
+        }
+        RecordingService service = RecordingService.getInstance();
+        if (service != null) {
+            service.reloadUsers();
+        }
+        runOnUiThread(() -> {
+            Toast.makeText(this, "已从云端恢复声纹", Toast.LENGTH_SHORT).show();
+            mOwnerChecked = true;
+            ensurePermissionsAndStart();
         });
     }
 

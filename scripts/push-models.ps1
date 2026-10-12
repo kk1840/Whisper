@@ -1,4 +1,7 @@
-# 把 device-models 下的离线模型推到设备系统目录 /system/etc/whisper/models（需要 userdebug + adb root）。
+# 把 device-models\ocr 推到设备系统目录 /system/etc/whisper/models（需要 userdebug + adb root）。
+# 语音识别与声纹已改云端（Step 流式 + 讯飞声纹），设备上只剩 OCR 模型需要推送。
+# device-models 里的 ASR/VAD/声纹/标点模型不再使用，保留在磁盘仅作备份；
+# 本地流式字幕模型实测会把整机拖挂（app 以 system uid 运行），严禁推送 streaming/。
 # 用法：powershell -File scripts\push-models.ps1 [-Serial <序列号>]
 param(
     [string]$Serial = ""
@@ -11,7 +14,7 @@ if (-not (Test-Path $adb)) { $adb = "adb" }
 $adbArgs = @()
 if ($Serial) { $adbArgs = @("-s", $Serial) }
 
-$src = Join-Path $PSScriptRoot "..\device-models"
+$src = Join-Path $PSScriptRoot "..\device-models\ocr"
 $dst = "/system/etc/whisper/models"
 
 function Adb { & $adb @adbArgs @args; if ($LASTEXITCODE -ne 0) { throw "adb $args failed" } }

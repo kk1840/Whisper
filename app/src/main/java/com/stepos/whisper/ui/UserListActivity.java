@@ -26,6 +26,9 @@ import com.stepos.whisper.databinding.ActivityUserListBinding;
 import com.stepos.whisper.databinding.ItemUserBinding;
 import com.stepos.whisper.service.RecordingService;
 
+import com.stepos.whisper.voiceprint.VoiceprintLibrary;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -88,6 +91,11 @@ public class UserListActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this)
                 .setMessage(getString(R.string.user_delete_confirm, user.name))
                 .setPositiveButton(R.string.action_delete, (d, w) -> AppDatabase.IO.execute(() -> {
+                    User full = mDb.userDao().get(user.id);
+                    if (full != null) {
+                        VoiceprintLibrary.deleteFeaturesQuietly(
+                                VoiceprintLibrary.parseFeatureIds(full.featureIds));
+                    }
                     mDb.userDao().delete(user.id);
                     notifyServiceUsersChanged();
                 }))
@@ -113,6 +121,14 @@ public class UserListActivity extends AppCompatActivity {
         }
         AppDatabase.IO.execute(() -> {
             List<User> users = mDb.userDao().getAll();
+            List<String> cloudFeatureIds = new ArrayList<>();
+            for (User u : users) {
+                if (includeOwner || !u.isOwner) {
+                    cloudFeatureIds.addAll(VoiceprintLibrary.parseFeatureIds(u.featureIds));
+                }
+            }
+            // 云端声纹也一并清掉——卸载应用并不会清云端，这里是唯一的清除入口。
+            VoiceprintLibrary.deleteFeaturesQuietly(cloudFeatureIds);
             if (includeOwner) {
                 mDb.userDao().deleteAll();
             } else {

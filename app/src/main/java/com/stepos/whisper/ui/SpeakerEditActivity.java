@@ -27,6 +27,8 @@ import com.stepos.whisper.service.TranscriptLine;
 
 import java.io.File;
 import java.io.IOException;
+import com.stepos.whisper.voiceprint.VoiceprintLibrary;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -379,6 +381,10 @@ public class SpeakerEditActivity extends AppCompatActivity {
                 .setMessage(getString(R.string.user_delete_confirm, mUser.name))
                 .setPositiveButton(R.string.action_delete, (d, w) -> {
                     AppDatabase.IO.execute(() -> {
+                        if (mUser != null) {
+                            VoiceprintLibrary.deleteFeaturesQuietly(
+                                    VoiceprintLibrary.parseFeatureIds(mUser.featureIds));
+                        }
                         mDb.userDao().delete(mUserId);
                         notifyServiceUsersChanged();
                     });

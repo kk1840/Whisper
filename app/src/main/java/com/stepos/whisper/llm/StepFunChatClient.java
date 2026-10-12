@@ -22,12 +22,12 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 /**
- * 通过 Step Plan 通道调用 Chat Completions：从一段对话（录音转写或聊天截图）里提取与某个用户相关的待办和事实，
+ * 通过标准 API 通道调用 Chat Completions：从一段对话（录音转写或聊天截图）里提取与某个用户相关的待办和事实，
  * 以及把聊天截图的 OCR 文字整理成参与者和对话。
  */
 public class StepFunChatClient {
     private static final String TAG = "StepFunChatClient";
-    private static final String URL = "https://api.stepfun.com/step_plan/v1/chat/completions";
+    private static final String URL = "https://api.stepfun.com/v1/chat/completions";
     private static final String MODEL = "step-5-preview";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 

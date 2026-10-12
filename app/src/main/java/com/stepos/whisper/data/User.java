@@ -22,6 +22,9 @@ public class User {
     /** 额外的声纹（比如压低声音时的声音），多个向量首尾拼接，格式同 {@link #embedding}。 */
     public byte[] extraEmbeddings;
 
+    /** 云端声纹特征 id 列表（讯飞 featureId，逗号分隔）。本地不再保存声纹向量。 */
+    public String featureIds;
+
     public long createdAt;
 
     public long lastSeenAt;

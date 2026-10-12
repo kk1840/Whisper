@@ -17,7 +17,8 @@
     <string name="action_save">保存</string>
     <string name="action_cancel">取消</string>
 
-    <string name="speaker_unknown">陌生人</string>
+    <string name="speaker_unknown">未知</string>
+    <string name="speaker_pending">待识别</string>
     <string name="stranger_name">陌生人%1$d</string>
     <string name="speaker_edit_title">编辑 %1$s</string>
     <string name="stranger_prompt_title">听到新的声音：%1$s</string>
@@ -111,13 +112,13 @@
     <string name="new_speaker_stop_play">停止播放</string>
 
     <string name="enroll_title">录入本人声纹</string>
-    <string name="enroll_subtitle">Whisper 需要先认识你的声音，才能区分你和身边的人。整个过程在本机完成。</string>
+    <string name="enroll_subtitle">Whisper 需要先认识你的声音，才能区分你和身边的人。识别通过云端完成，需要联网。注册后云端建库要几秒，录完立刻测试可能头几句还认不出。</string>
     <string name="enroll_prompt_message">Whisper 需要认识你的声音，才能区分你和身边的人。稍后再说的话，你的声音会先被记成陌生人，之后可以在右下角“更多”里录入。</string>
     <string name="enroll_prompt_now">直接录</string>
     <string name="enroll_prompt_later">稍后再说</string>
     <string name="enroll_name_hint">你的姓名</string>
     <string name="enroll_read_hint">点击“开始录音”，用平常说话的语气朗读下面这段文字，读过的部分会变色，不必一字不差：</string>
-    <string name="enroll_passage">今天天气不错，我打算下午三点去公司开会，会后和同事一起吃饭。明天上午九点要去医院复查，记得带上病历和医保卡。周末准备带家人去公园散步，顺便买些水果和牛奶。我的电话号码尾号是二四六八，有事可以随时联系我。</string>
+    <string name="enroll_passage">今天天气不错，我打算下午三点去公司开会，会后和同事一起吃饭。我的电话号码尾号是二四六八，有事可以随时联系我。</string>
     <string name="enroll_loading">正在加载识别和声纹模型…</string>
     <string name="enroll_ready">准备好了，点击“开始录音”后朗读</string>
     <string name="enroll_recording">正在录音，请朗读上面的文字…</string>
@@ -129,7 +130,7 @@
     <string name="enroll_done">完成</string>
 
     <string name="enroll_title_new">添加声纹</string>
-    <string name="enroll_subtitle_new">请对方用平常说话的语气朗读下面这段文字，读完后输入对方的名字。整个过程在本机完成。</string>
+    <string name="enroll_subtitle_new">请对方用平常说话的语气朗读下面这段文字，读完后输入对方的名字。识别通过云端完成，需要联网。</string>
     <string name="enroll_name_hint_new">对方的名字</string>
     <string name="enroll_enough_new">朗读完成，输入名字后点击“完成”</string>
     <string name="enroll_title_add">为 %1$s 补录声纹</string>

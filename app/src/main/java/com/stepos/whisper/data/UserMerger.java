@@ -1,14 +1,10 @@
 package com.stepos.whisper.data;
 
-import com.stepos.whisper.speaker.EmbeddingUtils;
-import com.stepos.whisper.speaker.SpeakerRecognizer;
-
-import java.util.ArrayList;
-import java.util.List;
+import com.stepos.whisper.voiceprint.VoiceprintLibrary;
 
 /**
  * 把用户 from（通常是“陌生人N”）并入已有用户 to：发言、事项、待识别队列、聊天昵称都改归 to，
- * from 的声纹作为 to 的额外声纹保留（同一个人压低声音时也能认出来），然后删掉 from。
+ * from 的云端声纹特征 id 划转给 to（云端不动，只改本地归属），然后删掉 from。
  */
 public final class UserMerger {
     private UserMerger() {
@@ -27,25 +23,7 @@ public final class UserMerger {
             if (src == null || dst == null) {
                 return;
             }
-            float[] dstMain = EmbeddingUtils.fromBytes(dst.embedding);
-            float[] srcMain = EmbeddingUtils.fromBytes(src.embedding);
-            if (dstMain == null && srcMain != null) {
-                // to 是从聊天截图建的、还没有声纹的用户：直接继承 from 的声纹。
-                dst.embedding = src.embedding;
-                dst.sampleCount = src.sampleCount;
-                dst.extraEmbeddings = src.extraEmbeddings;
-            } else {
-                int dim = dstMain == null ? 0 : dstMain.length;
-                List<float[]> extras = new ArrayList<>(EmbeddingUtils.splitBytes(dst.extraEmbeddings, dim));
-                if (srcMain != null && srcMain.length == dim) {
-                    extras.add(srcMain);
-                }
-                extras.addAll(EmbeddingUtils.splitBytes(src.extraEmbeddings, dim));
-                while (extras.size() > SpeakerRecognizer.MAX_EXTRA) {
-                    extras.remove(0);
-                }
-                dst.extraEmbeddings = extras.isEmpty() ? null : EmbeddingUtils.joinBytes(extras);
-            }
+            dst.featureIds = VoiceprintLibrary.mergeFeatureIds(dst.featureIds, src.featureIds);
             dst.lastSeenAt = Math.max(dst.lastSeenAt, src.lastSeenAt);
             users.update(dst);
 

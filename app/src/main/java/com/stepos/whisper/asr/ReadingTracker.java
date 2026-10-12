@@ -6,6 +6,10 @@ import java.util.List;
 /**
  * 跟读进度的模糊匹配：把识别文字和朗读原文逐字对齐，允许识别错字、漏字、多字，
  * 以及数字/同音常见字的差异，返回原文已读到的位置。
+ *
+ * 匹配位置持久保存在实例里，调用方只喂「自上次调用以来新增的识别文本」（advance）。
+ * 流式识别暂停续录或断线重连后，字幕会重新从头累计，不能拿它整体重算进度——
+ * 那样进度会冻结在断点前。增量喂入则位置只进不退，天然免疫重连。
  */
 public class ReadingTracker {
     /** 识别出的一个字最多向前跳过这么多个原文字去找匹配，跳过的字视为“读过但没识别准”。 */
@@ -21,6 +25,8 @@ public class ReadingTracker {
     /** 原文中有效字（汉字/数字）的规范化形式及其在原文中的下标。 */
     private final char[] mChars;
     private final int[] mIndex;
+    /** 当前已读到的原文有效字下标（0..size），只增不减。 */
+    private int mPos;
 
     public ReadingTracker(String passage) {
         mPassage = passage;
@@ -48,24 +54,28 @@ public class ReadingTracker {
         return mChars.length;
     }
 
-    /** 返回原文中已读过的有效字数（0..size）。 */
-    public int progress(String recognized) {
-        int p = 0;
-        for (int i = 0; i < recognized.length() && p < mChars.length; i++) {
-            char r = recognized.charAt(i);
+    /** 喂新增的识别文本，推进并返回当前已读到的有效字数（0..size）。 */
+    public int advance(String delta) {
+        for (int i = 0; i < delta.length() && mPos < mChars.length; i++) {
+            char r = delta.charAt(i);
             if (!isContent(r)) {
                 continue;
             }
             r = normalize(r);
-            int end = Math.min(mChars.length, p + LOOKAHEAD);
-            for (int k = p; k < end; k++) {
+            int end = Math.min(mChars.length, mPos + LOOKAHEAD);
+            for (int k = mPos; k < end; k++) {
                 if (mChars[k] == r) {
-                    p = k + 1;
+                    mPos = k + 1;
                     break;
                 }
             }
         }
-        return p;
+        return mPos;
+    }
+
+    /** 当前已读到的有效字数（0..size）。 */
+    public int position() {
+        return mPos;
     }
 
     /** 已读的有效字数换算成原文字符串中的结束下标（含其后的标点），用于高亮。 */
