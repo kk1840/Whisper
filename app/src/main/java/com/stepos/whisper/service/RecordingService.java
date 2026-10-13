@@ -99,8 +99,14 @@ public class RecordingService extends Service implements ConversationManager.Lis
     private static final long TURN_GAP_MS = 2000;
     /** 说话段内累计音频上限，到点立刻收段（讯飞单请求上限 4MB base64 ≈ 90 秒，15 秒很安全）。 */
     private static final long TURN_MAX_MS = 15000;
-    /** 自动学习（陌生人建档/合并转注册/指认）给单个用户保留的云端声纹条数上限。 */
+    /** 自动学习（陌生人建档）给单个用户保留的云端声纹条数上限。 */
     private static final int AUTO_ENROLL_FEATURE_CAP = 3;
+    /**
+     * 手动指认/合并的学习宽限期：讯飞注册是异步入库的（实测延迟可超过十几秒），刚学的特征
+     * 在窗口内检索不到；此期间段级未命中跟随学习目标而不是再建陌生人，否则"合并后一说话
+     * 又冒出陌生人N"无限循环。
+     */
+    private static final long LEARN_GRACE_MS = 120_000;
     private static final long UTTERANCE_RETENTION_MS = 30L * 24 * 60 * 60 * 1000;
     /** 回放结束后再屏蔽这么久，避开扬声器余音。 */
     private static final long PLAYBACK_TAIL_MS = 800;
@@ -164,6 +170,9 @@ public class RecordingService extends Service implements ConversationManager.Lis
     /** 最近一次声纹未命中建档的陌生人（去重窗口内归同一人）。 */
     private long mLastStrangerId = TranscriptLine.NO_USER;
     private long mLastStrangerAtMs;
+    /** 学习宽限期：最近一次手动指认/合并的目标用户与截止时刻（处理线程）。 */
+    private long mLearnUserId = TranscriptLine.NO_USER;
+    private long mLearnUntilMs;
 
     /** 说话段里一句已上屏、等段收口后统一做声纹归属的句子。 */
     private static class TurnSentence {
@@ -567,6 +576,9 @@ public class RecordingService extends Service implements ConversationManager.Lis
             if (mLastStrangerId == from) {
                 mLastStrangerId = to;
             }
+            // 新特征（划转+语音证据注册）还在讯飞异步入库：宽限期内未命中的段跟随 to。
+            mLearnUserId = to;
+            mLearnUntilMs = System.currentTimeMillis() + LEARN_GRACE_MS;
             if (mVoiceprint != null) {
                 loadUsers();
             }
@@ -587,7 +599,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
             return;
         }
         try {
-            enrollAudioToUser(to, WavReader.readPcm16k(wav));
+            enrollAudioToUser(to, WavReader.readPcm16k(wav), true);
         } catch (IOException e) {
             Log.w(TAG, "voice evidence enroll failed: " + e);
         }
@@ -608,9 +620,12 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 long startB = mTimeline.globalByteAtWallMs(startMs);
                 long endB = mTimeline.globalByteAtWallMs(endMs);
                 if (startB >= 0 && endB > startB) {
-                    enrollAudioToUser(userId, mTimeline.cutGlobal(startB, endB));
+                    enrollAudioToUser(userId, mTimeline.cutGlobal(startB, endB), true);
                 }
             }
+            // 指认即学习：新特征异步入库有延迟，宽限期内未命中的段跟随该用户，不再建陌生人。
+            mLearnUserId = userId;
+            mLearnUntilMs = System.currentTimeMillis() + LEARN_GRACE_MS;
             UserInfo info = mUsers.get(userId);
             if (info != null) {
                 ServiceState.relabelLine(lineId, info.name, userId, info.color);
@@ -1041,14 +1056,26 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 }
                 return;
             }
-            // 没命中：窗口内的连续未命中归同一位陌生人，窗口外建档新陌生人。
+            // 没命中。
+            // 手动学习宽限期内：刚指认/合并的人，新特征还在讯飞异步入库中检索不到，跟随学习
+            // 目标并顺手把这段也注册给他（自动口径，受条数上限约束），不再重复建陌生人。
+            if (mLearnUserId != TranscriptLine.NO_USER && mUsers.containsKey(mLearnUserId)
+                    && System.currentTimeMillis() < mLearnUntilMs) {
+                long learnId = mLearnUserId;
+                enrollAudioToUser(learnId, pcm, false);
+                for (TurnSentence s : turn) {
+                    finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, s.pcm, learnId);
+                }
+                return;
+            }
+            // 窗口外的连续未命中归同一位陌生人，窗口外建档新陌生人。
             long strangerId = mLastStrangerId;
             if (strangerId == TranscriptLine.NO_USER || !mUsers.containsKey(strangerId)
                     || firstStart - mLastStrangerAtMs > STRANGER_WINDOW_MS) {
                 strangerId = createStranger(firstText, lastEnd);
             }
             mLastStrangerAtMs = lastEnd;
-            enrollAudioToUser(strangerId, pcm);
+            enrollAudioToUser(strangerId, pcm, false);
             for (TurnSentence s : turn) {
                 finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, s.pcm, strangerId);
             }
@@ -1128,14 +1155,17 @@ public class RecordingService extends Service implements ConversationManager.Lis
 
     /**
      * 把一段已抓到的 PCM 注册成该用户的云端声纹（陌生人建档、手动纠正学习共用）。
-     * 3 秒以上才值得注册，且自动学习的特征条数有上限，防止特征爆炸；失败不重试。
+     * 3 秒以上才值得注册；自动学习（陌生人建档）条数有上限，防止特征爆炸。手动指认/合并是
+     * 用户给出的强信号，不受该上限约束，只受 {@link VoiceprintLibrary#MAX_FEATURES_PER_USER}
+     * 兜底；失败不重试。
      */
-    private void enrollAudioToUser(long userId, byte[] pcm) {
+    private void enrollAudioToUser(long userId, byte[] pcm, boolean manual) {
         if (mVoiceprint == null || pcm == null || pcm.length < PcmTimeline.BYTES_PER_SEC * 3) {
             return;
         }
         User user = mDb.userDao().get(userId);
-        if (user == null || VoiceprintLibrary.parseFeatureIds(user.featureIds).size() >= AUTO_ENROLL_FEATURE_CAP) {
+        if (user == null || (!manual
+                && VoiceprintLibrary.parseFeatureIds(user.featureIds).size() >= AUTO_ENROLL_FEATURE_CAP)) {
             return;
         }
         mVoiceprint.enroll(userId, user.name, user.isOwner, pcm, (featureId, err) -> proc(() -> {
