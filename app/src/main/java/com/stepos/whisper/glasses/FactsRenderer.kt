@@ -32,12 +32,14 @@ object FactsRenderer {
         typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
     }
 
-    /** 画 [name] 的事项页。待办在前、事实在后，放不下的用“…还有 N 条”收尾。 */
-    fun render(name: String, cards: List<FactCard>): Bitmap {
+    /** 画 [name] 的事项页。待办在前、事实在后，放不下的用“…还有 N 条”收尾。
+     *  [newItems] 为 true 时是“刚提取出的新事项”页，标题加“新增”与全量卡片页区分。 */
+    fun render(name: String, cards: List<FactCard>, newItems: Boolean = false): Bitmap {
         val todos = cards.filter { it.fact.kind != UserFact.KIND_FACT }.map { it.fact }
         val facts = cards.filter { it.fact.kind == UserFact.KIND_FACT }.map { it.fact }
         val title = buildString {
             append(name)
+            if (newItems) append(" · 新增")
             if (todos.isNotEmpty()) append(" · 待办 ").append(todos.size)
             if (facts.isNotEmpty()) append(" · 事实 ").append(facts.size)
         }

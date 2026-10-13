@@ -1248,13 +1248,12 @@ public class RecordingService extends Service implements ConversationManager.Lis
     }
 
     /**
-     * AI 提取到新事项（extraction 或 screenshot 线程）：不在本应用里时灵动岛小卡提示，在应用里上方卡片区会直接出现。
+     * AI 提取到新事项（extraction / screenshot / notification 线程）：眼镜已连接时立刻推一页“新增”到镜片上，
+     * 与手机是否在前台无关；不在本应用里时再补灵动岛小卡，在应用里上方卡片区会直接出现。
      * 从截图昵称新建的用户可能还没进声纹库，查不到时回数据库取名字和颜色。
      */
     private void onFactsAdded(long userId, List<UserFact> facts) {
-        if (ServiceState.isUiVisible()) {
-            return;
-        }
+        boolean uiVisible = ServiceState.isUiVisible();
         proc(() -> {
             UserInfo info = mUsers.get(userId);
             if (info == null) {
@@ -1265,7 +1264,20 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 info = new UserInfo(u.name, UserColors.orDefault(u.color, u.id), u.isOwner, u.isStranger);
             }
             UserInfo shown = info;
-            mMain.post(() -> mLive.showNewFacts(shown.name, shown.color, facts));
+            if (GlassesManager.isReady() && !facts.isEmpty()) {
+                List<FactCard> cards = new ArrayList<>(facts.size());
+                for (UserFact f : facts) {
+                    FactCard card = new FactCard();
+                    card.fact = f;
+                    card.userName = shown.name;
+                    card.userColor = shown.color;
+                    cards.add(card);
+                }
+                GlassesManager.showNew(shown.name, cards);
+            }
+            if (!uiVisible) {
+                mMain.post(() -> mLive.showNewFacts(shown.name, shown.color, facts));
+            }
         });
     }
 

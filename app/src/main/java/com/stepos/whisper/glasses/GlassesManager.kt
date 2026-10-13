@@ -66,11 +66,11 @@ object GlassesManager {
      */
     @JvmStatic
     @JvmOverloads
-    fun show(name: String, cards: List<FactCard>, onResult: ((Boolean) -> Unit)? = null): Boolean {
+    fun show(name: String, cards: List<FactCard>, onResult: ((Boolean) -> Unit)? = null, isNew: Boolean = false): Boolean {
         val c = connection ?: return false
         if (!c.isReady || cards.isEmpty()) return false
         c.execute {
-            val ok = runCatching { c.showPage(FactsRenderer.render(name, cards)) }
+            val ok = runCatching { c.showPage(FactsRenderer.render(name, cards, newItems = isNew)) }
                 .onFailure { Log.e(TAG, "show failed", it) }
                 .getOrDefault(false)
             main.post {
@@ -80,6 +80,11 @@ object GlassesManager {
         }
         return true
     }
+
+    /** 刚提取出的新待办/事实：页面带“新增”标记，供 Java 侧语义化调用。 */
+    @JvmStatic
+    fun showNew(name: String, cards: List<FactCard>): Boolean =
+        show(name, cards, isNew = true)
 
     /** 推一张内置示例图，验证链路。 */
     @JvmStatic
