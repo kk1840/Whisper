@@ -412,6 +412,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
             }
         });
         mProc.shutdown();
+        ServiceState.resolveAllPending(getString(R.string.speaker_pending), getString(R.string.speaker_unknown));
         ServiceState.setPartial("");
         ServiceState.setStatus(ServiceState.Status.STOPPED);
         super.onDestroy();
@@ -934,6 +935,9 @@ public class RecordingService extends Service implements ConversationManager.Lis
      * 陌生人并顺手注册声纹（转写里显示“未知”）。更短的句子走 {@link #searchShortSentence}。
      */
     private void handleSentence(String transcript, long startByte, long endByte) {
+        if (sInstance != this) {
+            return;
+        }
         String text = ChineseTextFilter.apply(transcript);
         if (!ChineseTextFilter.hasContent(text)) {
             return;
@@ -1016,7 +1020,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
      * 解决以前“单句太短注册不上、陌生人永远没有声纹”的问题。
      */
     private void flushTurn() {
-        if (mTurn.isEmpty() || mVoiceprint == null) {
+        if (mTurn.isEmpty()) {
             return;
         }
         List<TurnSentence> turn = new ArrayList<>(mTurn);
@@ -1026,8 +1030,11 @@ public class RecordingService extends Service implements ConversationManager.Lis
         for (TurnSentence s : turn) {
             total += s.pcm.length;
         }
-        if (total * 1000L / PcmTimeline.BYTES_PER_SEC < MIN_DURATION_MS) {
-            return; // 整段还是太短，维持临时归属
+        if (mVoiceprint == null || total * 1000L / PcmTimeline.BYTES_PER_SEC < MIN_DURATION_MS) {
+            for (TurnSentence s : turn) {
+                finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, null, s.provisional);
+            }
+            return;
         }
         byte[] pcm = new byte[total];
         int pos = 0;
@@ -1043,10 +1050,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 Log.w(TAG, "voiceprint search failed: " + err);
                 // 检索不可用且不会重试：维持临时归属，连临时归属都没有的句子落成“未知”。
                 for (TurnSentence s : turn) {
-                    if (s.provisional == null) {
-                        ServiceState.relabelLine(s.lineId, getString(R.string.speaker_unknown),
-                                TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN);
-                    }
+                    finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, null, s.provisional);
                 }
                 return;
             }
@@ -1087,14 +1091,29 @@ public class RecordingService extends Service implements ConversationManager.Lis
         saveUtterance(userId, text, startMs, endMs);
         if (userId != null) {
             UserInfo info = mUsers.get(userId);
-            mMain.post(() -> mLive.setLatestLine(info.name, info.color, text));
+            mMain.post(() -> {
+                if (sInstance == this) mLive.setLatestLine(info.name, info.color, text);
+            });
             return ServiceState.addLine(startMs, endMs, info.name, text, userId, info.color, Utterance.AI_NONE);
         }
         // 没有可沿用的临时归属：声纹结论没回来之前先标“待识别”，结论落地后统一补标。
         String speaker = getString(R.string.speaker_pending);
-        mMain.post(() -> mLive.setLatestLine(speaker, TranscriptLine.COLOR_UNKNOWN, text));
-        return ServiceState.addLine(startMs, endMs, speaker, text, TranscriptLine.NO_USER,
+        mMain.post(() -> {
+            if (sInstance == this) mLive.setLatestLine(speaker, TranscriptLine.COLOR_UNKNOWN, text);
+        });
+        long lineId = ServiceState.addLine(startMs, endMs, speaker, text, TranscriptLine.NO_USER,
                 TranscriptLine.COLOR_UNKNOWN, Utterance.AI_NONE);
+        Runnable resolve = () -> {
+            if (ServiceState.resolvePendingLine(lineId, speaker, getString(R.string.speaker_unknown))) {
+                refreshLatestSpeaker(lineId);
+            }
+        };
+        try {
+            mProc.schedule(resolve, 30, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException ignored) {
+            resolve.run();
+        }
+        return lineId;
     }
 
     /**
@@ -1105,9 +1124,9 @@ public class RecordingService extends Service implements ConversationManager.Lis
     private void finishSentence(Long provisional, long lineId, long startMs, long endMs, long durationMs,
                                 byte[] pcm, Long finalUserId) {
         if (finalUserId == null || !mUsers.containsKey(finalUserId)) {
-            if (finalUserId == null && provisional == null) {
-                ServiceState.relabelLine(lineId, getString(R.string.speaker_unknown),
-                        TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN);
+            if (ServiceState.resolvePendingLine(lineId, getString(R.string.speaker_pending),
+                    getString(R.string.speaker_unknown))) {
+                refreshLatestSpeaker(lineId);
             }
             return;
         }
@@ -1116,6 +1135,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
         if (provisional == null || provisional != uid) {
             mDb.utteranceDao().assignByTime(startMs, endMs, uid);
             ServiceState.relabelLine(lineId, info.name, uid, info.color);
+            refreshLatestSpeaker(lineId);
         }
         mDb.userDao().touch(uid, endMs);
         mLastSpeakerId = uid;
@@ -1126,6 +1146,15 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 rememberVoice(uid, pcm);
             }
         }
+    }
+
+    private void refreshLatestSpeaker(long lineId) {
+        mMain.post(() -> {
+            TranscriptLine latest = ServiceState.latestLine();
+            if (sInstance == this && latest != null && latest.id == lineId) {
+                mLive.setLatestLine(latest.speaker, latest.color, latest.text);
+            }
+        });
     }
 
     /**

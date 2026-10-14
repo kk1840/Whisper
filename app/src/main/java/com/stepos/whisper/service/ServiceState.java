@@ -223,6 +223,33 @@ public final class ServiceState {
         publish();
     }
 
+    /** 只收尾仍待识别的行，不覆盖已识别或手动指认的归属。 */
+    static synchronized boolean resolvePendingLine(long lineId, String pending, String unknown) {
+        for (int i = 0; i < sLineBuffer.size(); i++) {
+            TranscriptLine line = sLineBuffer.get(i);
+            if (line.id == lineId && line.userId == TranscriptLine.NO_USER && pending.equals(line.speaker)) {
+                sLineBuffer.set(i, line.withSpeaker(unknown, TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN));
+                publish();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static synchronized TranscriptLine latestLine() {
+        return sLineBuffer.isEmpty() ? null : sLineBuffer.get(sLineBuffer.size() - 1);
+    }
+
+    static synchronized void resolveAllPending(String pending, String unknown) {
+        for (int i = 0; i < sLineBuffer.size(); i++) {
+            TranscriptLine line = sLineBuffer.get(i);
+            if (line.userId == TranscriptLine.NO_USER && pending.equals(line.speaker)) {
+                sLineBuffer.set(i, line.withSpeaker(unknown, TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN));
+            }
+        }
+        publish();
+    }
+
     static synchronized void relabelLine(long lineId, String speaker, long userId, int color) {
         for (int i = 0; i < sLineBuffer.size(); i++) {
             TranscriptLine line = sLineBuffer.get(i);
