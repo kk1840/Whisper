@@ -847,7 +847,7 @@ class G2Connection(context: Context) {
     private val tileFingerprint = HashMap<Int, Int>()
     @Volatile private var lastMtu = 247
 
-    private val header = EvenHub.TextContainer(1, "hdr", 0, 0, EvenHub.LENS_W, HEADER_H, "Whisper")
+    private val header = EvenHub.TextContainer(1, "hdr", 0, 0, EvenHub.LENS_W, HEADER_H, " ")
     private val grid = listOf(
         EvenHub.ImageContainer(10, "t0", 0, HEADER_H, TILE_W, TILE_H),
         EvenHub.ImageContainer(11, "t1", TILE_W, HEADER_H, TILE_W, TILE_H),

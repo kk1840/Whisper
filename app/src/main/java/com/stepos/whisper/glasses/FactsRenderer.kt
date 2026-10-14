@@ -13,104 +13,109 @@ import com.stepos.whisper.data.FactCard
 import com.stepos.whisper.data.UserFact
 import com.stepos.whisper.ui.FactFormat
 
-/**
- * 把某个人的待办和事实画成一张黑底白字的位图（[G2Connection.PAGE_W]×[G2Connection.PAGE_H]），
- * 用系统字体渲染中文，绕开眼镜固件字体是否带 CJK 的问题。镜片是单色绿光，只用灰度。
- */
+/** 中文按实际行高分页，跨页条目保留完整布局，不省略正文。 */
 object FactsRenderer {
     private const val W = G2Connection.PAGE_W
     private const val H = G2Connection.PAGE_H
     private const val PAD = 10f
-    private const val TITLE_SIZE = 26f
-    private const val SECTION_SIZE = 20f
-    private const val BODY_SIZE = 21f
+    private const val BODY_TOP = 48f
+    private const val FOOTER_H = 24f
     private const val LINE_GAP = 2f
 
-    private fun paint(size: Float, bold: Boolean, gray: Int): TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+    private fun paint(size: Float, bold: Boolean, gray: Int) = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(gray, gray, gray)
         textSize = size
         typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
     }
 
-    /** 画 [name] 的事项页。待办在前、事实在后，放不下的用“…还有 N 条”收尾。
-     *  [newItems] 为 true 时是“刚提取出的新事项”页，标题加“新增”与全量卡片页区分。 */
-    fun render(name: String, cards: List<FactCard>, newItems: Boolean = false): Bitmap {
+    data class Slice(val layout: StaticLayout, val top: Int, val bottom: Int, val y: Float)
+    data class Page(val title: String, val slices: List<Slice>, val number: Int, val total: Int) {
+        fun render(): Bitmap {
+            val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.BLACK)
+            val titlePaint = paint(26f, true, 255)
+            val titleText = TextUtils.ellipsize(title, titlePaint, W - PAD * 2, TextUtils.TruncateAt.END)
+            canvas.drawText(titleText, 0, titleText.length, PAD, PAD - titlePaint.ascent(), titlePaint)
+            canvas.drawRect(PAD, BODY_TOP - 7, W - PAD, BODY_TOP - 6, paint(20f, true, 170))
+            for (slice in slices) {
+                canvas.save()
+                canvas.clipRect(PAD, slice.y, W - PAD, slice.y + slice.bottom - slice.top)
+                canvas.translate(PAD, slice.y - slice.top)
+                slice.layout.draw(canvas)
+                canvas.restore()
+            }
+            if (total > 1) {
+                val footer = paint(18f, false, 170)
+                canvas.drawText("$number / $total", PAD, H - PAD - footer.descent(), footer)
+            }
+            return bitmap
+        }
+    }
+
+    fun pages(name: String, cards: List<FactCard>, newItems: Boolean = false): List<Page> {
         val todos = cards.filter { it.fact.kind != UserFact.KIND_FACT }.map { it.fact }
         val facts = cards.filter { it.fact.kind == UserFact.KIND_FACT }.map { it.fact }
-        val title = buildString {
-            append(name)
-            if (newItems) append(" · 新增")
-            if (todos.isNotEmpty()) append(" · 待办 ").append(todos.size)
-            if (facts.isNotEmpty()) append(" · 事实 ").append(facts.size)
-        }
         val sections = ArrayList<Pair<String, List<String>>>()
         if (todos.isNotEmpty()) sections.add("待办" to todos.map { "☐ " + FactFormat.oneLine(it) })
         if (facts.isNotEmpty()) sections.add("事实" to facts.map { "• " + it.content })
-        return renderSections(title, sections)
+        return paginate(name + if (newItems) " · 新增" else "", sections)
     }
 
-    /** 自检用的示例页。 */
-    fun renderSample(): Bitmap = renderSections(
-        "测试 · Whisper → Even G2",
+    fun samplePages(): List<Page> = paginate(
+        "张三",
         listOf(
             "待办" to listOf("☐ 周三下午三点去公司开会（会议室 A · 张三）", "☐ 把合同发给李四"),
             "事实" to listOf("• 最近在准备考研", "• 不吃辣", "• 这一行是用来测试自动换行的，长度故意超过一行的宽度看看效果"),
         )
     )
 
-    private fun renderSections(title: String, sections: List<Pair<String, List<String>>>): Bitmap {
-        val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        c.drawColor(Color.BLACK)
-        val contentW = (W - PAD * 2).toInt()
-
-        val titlePaint = paint(TITLE_SIZE, true, 255)
-        val sectionPaint = paint(SECTION_SIZE, true, 170)
-        val bodyPaint = paint(BODY_SIZE, false, 235)
-        val dimPaint = paint(BODY_SIZE, false, 150)
-
-        var y = PAD
-        // 标题一行，超长省略。
-        val titleText = TextUtils.ellipsize(title, titlePaint, contentW.toFloat(), TextUtils.TruncateAt.END)
-        c.drawText(titleText, 0, titleText.length, PAD, y - titlePaint.ascent(), titlePaint)
-        y += titlePaint.fontSpacing + 4f
-        // 分割线
-        c.drawRect(PAD, y, W - PAD, y + 1f, sectionPaint)
-        y += 6f
-
-        val bodyLine = bodyPaint.fontSpacing + LINE_GAP
-        val bottom = H - PAD
-        var remaining = sections.sumOf { it.second.size }
-        var truncated = false
-
-        outer@ for ((heading, items) in sections) {
-            if (y + sectionPaint.fontSpacing + bodyLine > bottom) { truncated = true; break }
-            c.drawText(heading, PAD, y - sectionPaint.ascent(), sectionPaint)
-            y += sectionPaint.fontSpacing + 2f
+    internal fun paginate(title: String, sections: List<Pair<String, List<String>>>): List<Page> {
+        val width = (W - PAD * 2).toInt()
+        val bottom = H - PAD - FOOTER_H
+        val bodyPaint = paint(21f, false, 235)
+        val headingPaint = paint(20f, true, 170)
+        val completed = ArrayList<List<Slice>>()
+        var slices = ArrayList<Slice>()
+        var y = BODY_TOP
+        fun nextPage() {
+            if (slices.isNotEmpty()) completed.add(slices)
+            slices = ArrayList()
+            y = BODY_TOP
+        }
+        fun layout(text: String, p: TextPaint): StaticLayout =
+            StaticLayout.Builder.obtain(text, 0, text.length, p, width)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(LINE_GAP, 1f)
+                .setIncludePad(false)
+                .build()
+        for ((heading, items) in sections) {
+            val head = layout(heading, headingPaint)
+            if (y + head.height + bodyPaint.fontSpacing + LINE_GAP > bottom) nextPage()
+            slices.add(Slice(head, 0, head.height, y))
+            y += head.height + LINE_GAP
             for (item in items) {
-                val layout = StaticLayout.Builder.obtain(item, 0, item.length, bodyPaint, contentW)
-                    .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                    .setLineSpacing(LINE_GAP, 1f)
-                    .setIncludePad(false)
-                    .setMaxLines(2)
-                    .setEllipsize(TextUtils.TruncateAt.END)
-                    .build()
-                // 最后一行留给“还有 N 条”提示。
-                val reserve = if (remaining > 1) bodyLine else 0f
-                if (y + layout.height + reserve > bottom) { truncated = true; break@outer }
-                c.save()
-                c.translate(PAD, y)
-                layout.draw(c)
-                c.restore()
-                y += layout.height + LINE_GAP
-                remaining--
+                val body = layout(item, bodyPaint)
+                var first = 0
+                while (first < body.lineCount) {
+                    val top = body.getLineTop(first)
+                    var end = first
+                    while (end < body.lineCount && y + body.getLineBottom(end) - top <= bottom) end++
+                    if (end == first) {
+                        nextPage()
+                        continue
+                    }
+                    val lastBottom = body.getLineBottom(end - 1)
+                    slices.add(Slice(body, top, lastBottom, y))
+                    y += lastBottom - top + LINE_GAP
+                    first = end
+                    if (first < body.lineCount) nextPage()
+                }
             }
             y += 4f
         }
-        if (truncated && remaining > 0) {
-            val more = "…还有 $remaining 条"
-            c.drawText(more, PAD, bottom - dimPaint.descent(), dimPaint)
-        }
-        return bmp
+        nextPage()
+        if (completed.isEmpty()) completed.add(emptyList())
+        return completed.mapIndexed { index, blocks -> Page(title, blocks, index + 1, completed.size) }
     }
 }
