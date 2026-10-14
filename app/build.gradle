@@ -25,6 +25,7 @@ android {
         targetSdk rootProject.ext.targetSdkVersion
         versionCode 1_00_000
         versionName '1.0.0'
+        testInstrumentationRunner 'com.stepos.whisper.service.RegressionInstrumentation'
 
         ndk {
             abiFilters 'arm64-v8a'
