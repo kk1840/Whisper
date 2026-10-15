@@ -109,7 +109,9 @@ public class ChatAliasActivity extends AppCompatActivity {
     private AliasWorker worker() {
         RecordingService service = RecordingService.getInstance();
         if (service == null) {
-            return null;
+            return mFromNotification
+                    ? new com.stepos.whisper.notification.NotificationAliasStore(AppDatabase.get(this))
+                    : null;
         }
         return mFromNotification ? service.getNotifications() : service.getScreenshots();
     }

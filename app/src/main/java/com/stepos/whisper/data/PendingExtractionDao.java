@@ -14,6 +14,18 @@ public interface PendingExtractionDao {
     @Query("SELECT * FROM pending_extractions ORDER BY createdAt LIMIT :limit")
     List<PendingExtraction> getOldest(int limit);
 
+    @Query("SELECT * FROM pending_extractions ORDER BY createdAt, id")
+    List<PendingExtraction> getAll();
+
+    @Query("SELECT COUNT(*) FROM pending_extractions WHERE userId = :userId AND startTime = :start AND endTime = :end")
+    int countExact(long userId, long start, long end);
+
+    @Query("SELECT COUNT(*) FROM pending_extractions WHERE id = :id")
+    int exists(long id);
+
+    @Query("UPDATE pending_extractions SET userId = :userId, attempts = 0 WHERE id = :id")
+    void retarget(long id, long userId);
+
     @Query("UPDATE pending_extractions SET attempts = attempts + 1 WHERE id = :id")
     void incrementAttempts(long id);
 

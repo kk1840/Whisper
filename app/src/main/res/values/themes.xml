@@ -273,6 +273,9 @@
         <item name="shapeAppearance">@style/ShapeAppearance.Whisper.Sheet</item>
         <item name="shapeAppearanceOverlay">@null</item>
         <item name="backgroundTint">@color/panel_bg</item>
+        <!-- M3 默认 true：导航栏高度的底部内边距要等首帧后的 insets 回调才补上，已展开的面板
+             会整体再上跳一下。关掉，改由打开处一次性补上（见 MainActivity.showMoreSheet）。 -->
+        <item name="paddingBottomSystemWindowInsets">false</item>
     </style>
 
     <!-- ================================================================ 文本 -->

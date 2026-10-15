@@ -51,7 +51,7 @@ import java.util.Map;
 /**
  * 全屏主界面：上 40% 是待办或事实卡片（顶部切换；不规则堆叠、循环滑动），下 60% 是实时转写。
  * <ul>
- *   <li>左上角 AI 状态标签可以点，等于“让 AI 立即识别”；</li>
+ *   <li>左上角 AI 状态标签可以点，立即把未识别的内容交给 AI；</li>
  *   <li>右下角「更多」打开底部面板：开关类设置在上，操作在下，清空聊天这种危险操作放最后；</li>
  *   <li>转写里点一句话看这个人的事项（陌生人则命名），长按改这句话的归属；</li>
  *   <li>聊天截图里有昵称等着指定时，转写上方出现一条提示，点进去指定。</li>
@@ -73,9 +73,6 @@ public class MainActivity extends AppCompatActivity {
     private List<FactCard> mPendingCards = new ArrayList<>();
     /** 等着机主指定昵称的任务（截图或微信通知）。 */
     private List<ServiceState.AliasPrompt> mAliasJobs = new ArrayList<>();
-    /** 微信消息进度条自动隐藏。 */
-    private final Runnable mHideNotifBanner = () ->
-            mBinding.notificationBanner.setVisibility(View.GONE);
     /**
      * 机主声纹的检查已经完成（有机主，或机主选了稍后再说）。之后每次回到主界面，
      * 录音服务不在（比如重新录入声纹时被停掉又中途退出）就重新拉起。
@@ -114,7 +111,6 @@ public class MainActivity extends AppCompatActivity {
         ServiceState.strangerPrompt().observe(this, this::promptStranger);
         ServiceState.aliasPrompt().observe(this, this::promptAlias);
         ServiceState.aliasWaiting().observe(this, this::renderAliasBanner);
-        ServiceState.notifProgress().observe(this, this::renderNotifProgress);
         AppDatabase.IO.execute(() -> {
             User owner = AppDatabase.get(this).userDao().getOwner();
             boolean noLocalUsers = AppDatabase.get(this).userDao().getAll().isEmpty();
@@ -303,44 +299,6 @@ public class MainActivity extends AppCompatActivity {
         startActivity(ChatAliasActivity.createIntent(this, first.jobId, first.notification));
     }
 
-    /** 微信消息的识别进度：收到 → AI 识别中 → 结果（完成类状态几秒后自动收起）。 */
-    private void renderNotifProgress(ServiceState.NotifProgress p) {
-        mBinding.notificationBanner.removeCallbacks(mHideNotifBanner);
-        if (p == null) {
-            mBinding.notificationBanner.setVisibility(View.GONE);
-            return;
-        }
-        String text;
-        switch (p.stage) {
-            case ServiceState.NotifProgress.ALIAS:
-                text = getString(R.string.notif_progress_alias, p.sender);
-                break;
-            case ServiceState.NotifProgress.DONE:
-                text = getString(R.string.notif_progress_done, p.sender, p.count);
-                break;
-            case ServiceState.NotifProgress.NONE:
-                text = getString(R.string.notif_progress_none, p.sender);
-                break;
-            case ServiceState.NotifProgress.MERGE:
-                text = getString(R.string.notif_progress_merge, p.count);
-                break;
-            case ServiceState.NotifProgress.IGNORED:
-                text = getString(R.string.notif_progress_ignored, p.sender);
-                break;
-            default:
-                text = getString(R.string.notif_progress_received, p.sender);
-                break;
-        }
-        mBinding.notificationBannerText.setText(text);
-        mBinding.notificationBanner.setVisibility(View.VISIBLE);
-        if (p.stage == ServiceState.NotifProgress.DONE || p.stage == ServiceState.NotifProgress.NONE
-                || p.stage == ServiceState.NotifProgress.IGNORED) {
-            mBinding.notificationBanner.postDelayed(mHideNotifBanner, 4000);
-        } else if (p.stage == ServiceState.NotifProgress.MERGE) {
-            mBinding.notificationBanner.postDelayed(mHideNotifBanner, 8000);
-        }
-    }
-
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -477,6 +435,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void onSpeakerClick(TranscriptLine line) {
+        if (line.isNotification()) {
+            if (line.aliasPending) {
+                startActivity(ChatAliasActivity.createIntent(this, line.notificationJobId, true));
+            } else if (line.userId != TranscriptLine.NO_USER) {
+                FactsDialog.show(this, line.userId, line.speaker, false);
+            }
+            return;
+        }
         if (line.userId == TranscriptLine.NO_USER) {
             startActivity(SpeakerEditActivity.createAssignIntent(this, line));
             return;
@@ -494,6 +460,7 @@ public class MainActivity extends AppCompatActivity {
 
     /** 长按任意一句话：认错人了，改成别人说的（或新建一个人）。 */
     private void onSpeakerLongClick(TranscriptLine line) {
+        if (line.isNotification()) return;
         startActivity(SpeakerEditActivity.createAssignIntent(this, line));
     }
 
@@ -526,7 +493,7 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             wanted.add(Manifest.permission.POST_NOTIFICATIONS);
         }
-        // Even G2 眼镜用 BLE；只在开关打开时顺带申请，拒绝了也不影响录音（配对页里可以再授权）。
+        // 智能眼镜用 BLE；只在开关打开时顺带申请，拒绝了也不影响录音（配对页里可以再授权）。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && Settings.isGlassesPushEnabled(this)) {
             wanted.add(Manifest.permission.BLUETOOTH_SCAN);
             wanted.add(Manifest.permission.BLUETOOTH_CONNECT);
@@ -710,6 +677,11 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         SheetMoreBinding b = SheetMoreBinding.inflate(getLayoutInflater());
+        // 导航栏底部内边距按当前窗口 insets 在显示前一次性补上，首帧布局即最终位置，
+        // 面板不会展开后再上跳（样式里已关掉 M3 的 paddingBottomSystemWindowInsets）。
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(getWindow().getDecorView());
+        b.getRoot().setPadding(0, 0, 0,
+                insets == null ? 0 : insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom);
         BottomSheetDialog sheet = new BottomSheetDialog(this);
         sheet.setContentView(b.getRoot());
         // 一打开就完全展开，所有开关和操作一眼可见，不用再往上拖一次。
@@ -764,10 +736,6 @@ public class MainActivity extends AppCompatActivity {
             startActivity(new Intent(this, GlassesPairingActivity.class));
         });
 
-        b.rowExtract.setOnClickListener(v -> {
-            sheet.dismiss();
-            extractAll();
-        });
         b.rowUsers.setOnClickListener(v -> {
             sheet.dismiss();
             startActivity(new Intent(this, UserListActivity.class));

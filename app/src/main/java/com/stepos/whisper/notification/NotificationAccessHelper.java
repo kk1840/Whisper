@@ -1,5 +1,6 @@
 package com.stepos.whisper.notification;
 
+import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.provider.Settings;
@@ -18,18 +19,21 @@ public final class NotificationAccessHelper {
     }
 
     public static boolean isEnabled(Context context) {
-        String flat = Settings.Secure.getString(context.getContentResolver(), SETTING);
-        return contains(context, flat);
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        return manager != null && manager.isNotificationListenerAccessGranted(
+                new ComponentName(context, WeChatNotificationListener.class));
     }
 
     /** 确保监听服务在系统名单里；不在就追加并要求重绑。写不进 secure 设置时返回 false（用 adb 兜底）。 */
     public static boolean ensureEnabled(Context context) {
         String flat = Settings.Secure.getString(context.getContentResolver(), SETTING);
-        if (contains(context, flat)) {
+        if (isEnabled(context)) {
+            NotificationListenerService.requestRebind(
+                    new ComponentName(context, WeChatNotificationListener.class));
             return true;
         }
         ComponentName component = new ComponentName(context, WeChatNotificationListener.class);
-        String value = flat == null || flat.trim().isEmpty()
+        String value = contains(context, flat) ? flat : flat == null || flat.trim().isEmpty()
                 ? component.flattenToString()
                 : flat.trim() + ":" + component.flattenToString();
         try {
@@ -40,8 +44,9 @@ public final class NotificationAccessHelper {
         }
         // 改完名单主动要求重绑，不必等系统轮询。
         NotificationListenerService.requestRebind(component);
-        Log.i(TAG, "notification listener enabled");
-        return true;
+        boolean enabled = isEnabled(context);
+        Log.i(TAG, "notification listener access granted=" + enabled);
+        return enabled;
     }
 
     private static boolean contains(Context context, String flat) {

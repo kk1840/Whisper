@@ -5,7 +5,9 @@ import androidx.lifecycle.MutableLiveData;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** 录音服务与界面之间共享的状态。 */
 public final class ServiceState {
@@ -28,17 +30,19 @@ public final class ServiceState {
     /** 所有还有昵称等机主指定的任务（截图和微信通知混在一起），主界面据此显示提示条。 */
     private static final MutableLiveData<List<AliasPrompt>> sAliasWaiting =
             new MutableLiveData<>(Collections.emptyList());
-    /** 微信通知链路的当前进度，null 表示没有进行中的，主界面顶部提示条据此显示。 */
-    private static final MutableLiveData<NotifProgress> sNotifProgress = new MutableLiveData<>(null);
 
     private static final List<TranscriptLine> sLineBuffer = new ArrayList<>();
+    private static final Set<Long> sVoiceprintBlocked = new HashSet<>();
     private static long sNextLineId = 1;
     private static volatile boolean sUiVisible;
+    /** 独立于界面行缓冲；只在句子归属落库后解除 AI 门禁。 */
+    private static boolean sPendingVoiceprints;
+    private static long sVoiceprintRevision;
 
     /** 大模型接口状态。 */
     public static final class AiStatus {
         public enum State {
-            /** 空闲，队列为空 */
+            /** 空闲或等待声纹，没有正在进行的请求 */
             IDLE,
             /** 正在请求 */
             WORKING,
@@ -75,28 +79,6 @@ public final class ServiceState {
         }
     }
 
-    /** 微信消息“识别到 → 正在 AI 识别 → 结果”的进度。 */
-    public static final class NotifProgress {
-        public static final int RECEIVED = 0;
-        public static final int ALIAS = 1;
-        public static final int DONE = 2;
-        public static final int NONE = 3;
-        public static final int MERGE = 4;
-        public static final int IGNORED = 5;
-
-        public final int stage;
-        /** 发送者昵称；MERGE 等场景可能为空。 */
-        public final String sender;
-        /** DONE 为新增条数，MERGE 为建议条数。 */
-        public final int count;
-
-        public NotifProgress(int stage, String sender, int count) {
-            this.stage = stage;
-            this.sender = sender;
-            this.count = count;
-        }
-    }
-
     private ServiceState() {
     }
 
@@ -122,6 +104,20 @@ public final class ServiceState {
 
     public static void setAiStatus(AiStatus status) {
         sAiStatus.postValue(status);
+    }
+
+    public static synchronized boolean hasPendingVoiceprints() {
+        return sPendingVoiceprints;
+    }
+
+    /** Worker 用版本校验识别期间是否有新句子或归属变更，避免使用旧快照。 */
+    public static synchronized long voiceprintRevision() {
+        return sVoiceprintRevision;
+    }
+
+    static synchronized void setPendingVoiceprints(boolean pending) {
+        sPendingVoiceprints = pending;
+        sVoiceprintRevision++;
     }
 
     public static LiveData<Long> strangerPrompt() {
@@ -167,14 +163,6 @@ public final class ServiceState {
         sAliasWaiting.postValue(new ArrayList<>(prompts));
     }
 
-    public static LiveData<NotifProgress> notifProgress() {
-        return sNotifProgress;
-    }
-
-    public static void setNotifProgress(NotifProgress progress) {
-        sNotifProgress.postValue(progress);
-    }
-
     public static void setUiVisible(boolean visible) {
         sUiVisible = visible;
     }
@@ -201,15 +189,69 @@ public final class ServiceState {
                                      int aiState) {
         long id = sNextLineId++;
         sLineBuffer.add(new TranscriptLine(id, timeMs, endMs, speaker, text, userId, color, aiState));
-        if (sLineBuffer.size() > MAX_LINES) {
-            sLineBuffer.remove(0);
-        }
+        trimVoiceLines();
         publish();
         return id;
     }
 
+    /** 任意线程；稳定任务 id 去重，完成的通知仅保留在本次运行期。 */
+    public static synchronized void upsertNotificationLine(TranscriptLine line) {
+        if (!line.isNotification()) {
+            throw new IllegalArgumentException("Expected a notification line");
+        }
+        for (int i = 0; i < sLineBuffer.size(); i++) {
+            TranscriptLine existing = sLineBuffer.get(i);
+            if (existing.isNotification() && existing.notificationJobId == line.notificationJobId) {
+                // 启动恢复或落库回调不可将已经完成的行退回排队中。
+                if ((existing.aiState == com.stepos.whisper.data.Utterance.AI_DONE
+                        && line.aiState != com.stepos.whisper.data.Utterance.AI_DONE)
+                        || (existing.aiState == com.stepos.whisper.data.Utterance.AI_NONE
+                        && line.aiState == com.stepos.whisper.data.Utterance.AI_QUEUED)) {
+                    return;
+                }
+                sLineBuffer.set(i, line);
+                publish();
+                return;
+            }
+        }
+        sLineBuffer.add(line);
+        trimNotificationLines();
+        publish();
+    }
+
+    private static void trimNotificationLines() {
+        List<TranscriptLine> notifications = new ArrayList<>();
+        for (TranscriptLine row : sLineBuffer) {
+            if (row.isNotification()) notifications.add(row);
+        }
+        notifications.sort((a, b) -> {
+            int time = Long.compare(a.timeMs, b.timeMs);
+            return time != 0 ? time : Long.compare(a.notificationJobId, b.notificationJobId);
+        });
+        for (int i = 0; i < notifications.size() - MAX_LINES; i++) {
+            sLineBuffer.remove(notifications.get(i));
+        }
+    }
+
+    private static void trimVoiceLines() {
+        int count = 0;
+        for (TranscriptLine line : sLineBuffer) {
+            if (!line.isNotification()) count++;
+        }
+        for (int i = 0; count > MAX_LINES && i < sLineBuffer.size();) {
+            if (!sLineBuffer.get(i).isNotification()) {
+                sVoiceprintBlocked.remove(sLineBuffer.remove(i).id);
+                count--;
+            } else {
+                i++;
+            }
+        }
+    }
+
+    /** 录音服务恢复/清理语音时不移除运行期通知。 */
     static synchronized void clearLines() {
-        sLineBuffer.clear();
+        sLineBuffer.removeIf(line -> !line.isNotification());
+        sVoiceprintBlocked.clear();
         publish();
     }
 
@@ -225,9 +267,12 @@ public final class ServiceState {
 
     /** 只收尾仍待识别的行，不覆盖已识别或手动指认的归属。 */
     static synchronized boolean resolvePendingLine(long lineId, String pending, String unknown) {
+        if (sVoiceprintBlocked.contains(lineId)) {
+            return false;
+        }
         for (int i = 0; i < sLineBuffer.size(); i++) {
             TranscriptLine line = sLineBuffer.get(i);
-            if (line.id == lineId && line.userId == TranscriptLine.NO_USER && pending.equals(line.speaker)) {
+            if (!line.isNotification() && line.id == lineId && line.userId == TranscriptLine.NO_USER && pending.equals(line.speaker)) {
                 sLineBuffer.set(i, line.withSpeaker(unknown, TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN));
                 publish();
                 return true;
@@ -237,23 +282,60 @@ public final class ServiceState {
     }
 
     static synchronized TranscriptLine latestLine() {
-        return sLineBuffer.isEmpty() ? null : sLineBuffer.get(sLineBuffer.size() - 1);
+        for (int i = sLineBuffer.size() - 1; i >= 0; i--) {
+            if (!sLineBuffer.get(i).isNotification()) return sLineBuffer.get(i);
+        }
+        return null;
     }
 
     static synchronized void resolveAllPending(String pending, String unknown) {
         for (int i = 0; i < sLineBuffer.size(); i++) {
             TranscriptLine line = sLineBuffer.get(i);
-            if (line.userId == TranscriptLine.NO_USER && pending.equals(line.speaker)) {
+            if (!line.isNotification() && line.userId == TranscriptLine.NO_USER && pending.equals(line.speaker)) {
                 sLineBuffer.set(i, line.withSpeaker(unknown, TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN));
             }
         }
         publish();
     }
 
+    static synchronized boolean isVoiceprintBlocked(long lineId) {
+        return sVoiceprintBlocked.contains(lineId);
+    }
+
+    static synchronized void blockVoiceprint(long lineId) {
+        for (TranscriptLine line : sLineBuffer) {
+            if (!line.isNotification() && line.id == lineId) {
+                sVoiceprintBlocked.add(lineId);
+                return;
+            }
+        }
+    }
+
+    /** 超时变成未知仍可补标，但已有归属（包括手动指认）绝不接受声纹覆盖。 */
+    static synchronized boolean canApplyVoiceprint(long lineId) {
+        if (sVoiceprintBlocked.contains(lineId)) {
+            return false;
+        }
+        for (TranscriptLine line : sLineBuffer) {
+            if (!line.isNotification() && line.id == lineId) {
+                return line.userId == TranscriptLine.NO_USER;
+            }
+        }
+        return false;
+    }
+
+    static synchronized boolean applyVoiceprint(long lineId, String speaker, long userId, int color) {
+        if (!canApplyVoiceprint(lineId)) {
+            return false;
+        }
+        relabelLine(lineId, speaker, userId, color);
+        return true;
+    }
+
     static synchronized void relabelLine(long lineId, String speaker, long userId, int color) {
         for (int i = 0; i < sLineBuffer.size(); i++) {
             TranscriptLine line = sLineBuffer.get(i);
-            if (line.id == lineId) {
+            if (!line.isNotification() && line.id == lineId) {
                 sLineBuffer.set(i, line.withSpeaker(speaker, userId, color));
                 publish();
                 return;
@@ -266,7 +348,7 @@ public final class ServiceState {
         boolean changed = false;
         for (int i = 0; i < sLineBuffer.size(); i++) {
             TranscriptLine line = sLineBuffer.get(i);
-            if (line.endMs < from || line.timeMs > to) {
+            if (line.isNotification() || line.endMs < from || line.timeMs > to) {
                 continue;
             }
             int next = reset ? (line.aiState == 1 ? 0 : line.aiState) : Math.max(line.aiState, state);
@@ -281,6 +363,11 @@ public final class ServiceState {
     }
 
     private static void publish() {
-        sLines.postValue(new ArrayList<>(sLineBuffer));
+        List<TranscriptLine> lines = new ArrayList<>(sLineBuffer);
+        lines.sort((a, b) -> {
+            int byTime = Long.compare(a.timeMs, b.timeMs);
+            return byTime != 0 ? byTime : Long.compare(a.id, b.id);
+        });
+        sLines.postValue(lines);
     }
 }

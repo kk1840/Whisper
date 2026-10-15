@@ -20,10 +20,15 @@ class RegressionInstrumentation : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         try {
+            VoiceprintRegressionInstrumentation().runChecks()
+            ImmediateExtractionRegressionChecks.runChecks(targetContext)
+            NotificationRegressionChecks.runChecks(this)
+            com.stepos.whisper.ui.NotificationCardUiChecks.runChecks(this)
             pendingChecks()
             paginationChecks()
+            todoChecks()
             rotationChecks()
-            result.putString("stream", "PASS: pending resolution, manual/late result, stop sweep, full text pagination, bounds, rotation cancellation\n")
+            result.putString("stream", "PASS: voiceprint manual priority, stale callbacks, score/error checks, pending resolution, full text pagination, todo pixels/BMP, single-page show cancellation\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
             result.putString("stream", "FAIL: ${error.stackTraceToString()}\n")
@@ -89,20 +94,54 @@ class RegressionInstrumentation : Instrumentation() {
         check(FactsRenderer.pages("李四", emptyList()).size == 1)
     }
 
+    private fun todoChecks() {
+        for (withExtras in listOf(false, true)) {
+            val todo = UserFact().apply {
+                kind = UserFact.KIND_TODO
+                content = "明天下午开会，记得带合同"
+                if (withExtras) {
+                    dueTime = "明天下午三点"
+                    location = "会议室 A"
+                    people = "演示联系人"
+                }
+            }
+            val card = FactCard().apply { fact = todo }
+            val page = FactsRenderer.pages("演示联系人", listOf(card)).first()
+            val body = page.slices.first { it.layout.text.startsWith("[ ] ") }
+            check(body.layout.text.contains(todo.content))
+            val bitmap = page.render()
+            var lit = 0
+            for (y in body.y.toInt() until (body.y + body.bottom - body.top).toInt()) {
+                for (x in 45 until 566) {
+                    if (com.stepos.whisper.glasses.Bmp4.gray4(bitmap.getPixel(x, y)) > 0) lit++
+                }
+            }
+            check(lit > 100) { "todo body missing (divider excluded)" }
+            val tiles = com.stepos.whisper.glasses.Bmp4.tiles(bitmap, 288, 128, 2, 2)
+            for (tile in tiles) {
+                for (y in 0 until tile.h) for (x in 0 until tile.w) {
+                    val offset = com.stepos.whisper.glasses.Bmp4.PIXEL_OFFSET + (tile.h - 1 - y) * 144 + x / 2
+                    val packed = tile.bmp[offset].toInt() and 255
+                    val gray = if (x % 2 == 0) packed shr 4 else packed and 15
+                    check(gray == com.stepos.whisper.glasses.Bmp4.gray4(bitmap.getPixel(tile.x + x, tile.y + y)))
+                }
+            }
+            bitmap.recycle()
+        }
+    }
+
     private fun rotationChecks() {
         val type = GlassesManager::class.java
         val field = type.getDeclaredField("generation").apply { isAccessible = true }
         val generation = field.get(null) as AtomicLong
-        val cancel = type.getDeclaredMethod("cancelRotation").apply { isAccessible = true }
+        val cancel = type.getDeclaredMethod("cancelShow").apply { isAccessible = true }
         val old = generation.get()
         val token = cancel.invoke(GlassesManager) as Long
         check(token > old)
         val newToken = cancel.invoke(GlassesManager) as Long
         check(newToken > token)
         waitForIdleSync()
-        val pages = type.getDeclaredField("activePages").apply { isAccessible = true }.get(null) as List<*>
-        check(pages.isEmpty())
-        val runnable = type.getDeclaredField("turnPage").apply { isAccessible = true }.get(null)
+        val runnable = type.getDeclaredField("dismissRunnable").apply { isAccessible = true }.get(null)
         check(runnable == null)
     }
 }

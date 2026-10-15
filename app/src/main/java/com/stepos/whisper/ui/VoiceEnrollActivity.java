@@ -4,7 +4,6 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Typeface;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -15,9 +14,7 @@ import android.os.Looper;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.style.BackgroundColorSpan;
 import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -115,7 +112,6 @@ public class VoiceEnrollActivity extends AppCompatActivity {
     private boolean mReady;
     private boolean mSaving;
     private int mHighlightFg;
-    private int mHighlightBg;
 
     private AudioRecord mRecord;
     private Thread mAudioThread;
@@ -175,8 +171,7 @@ public class VoiceEnrollActivity extends AppCompatActivity {
         }
 
         mTracker = new ReadingTracker(getString(R.string.enroll_passage));
-        mHighlightFg = getColor(R.color.read_text);
-        mHighlightBg = getColor(R.color.read_bg);
+        mHighlightFg = getColor(R.color.state_ok);
         renderPassage(0);
         mBinding.record.setOnClickListener(v -> {
             if (mRecording) {
@@ -394,8 +389,6 @@ public class VoiceEnrollActivity extends AppCompatActivity {
         SpannableString s = new SpannableString(passage);
         if (end > 0) {
             s.setSpan(new ForegroundColorSpan(mHighlightFg), 0, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            s.setSpan(new BackgroundColorSpan(mHighlightBg), 0, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            s.setSpan(new StyleSpan(Typeface.BOLD), 0, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         mBinding.passage.setText(s);
     }

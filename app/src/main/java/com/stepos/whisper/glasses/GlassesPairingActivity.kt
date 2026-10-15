@@ -29,7 +29,7 @@ import com.stepos.whisper.databinding.ActivityGlassesPairingBinding
 import com.stepos.whisper.databinding.ItemGlassesArmBinding
 
 /**
- * Even G2 配对页：总开关、连接状态、扫描 / 断开 / 忘记 / 测试、扫描结果列表（可手动指定左右），
+ * 智能眼镜配对页：总开关、连接状态、扫描 / 断开 / 忘记 / 测试、扫描结果列表（可手动指定左右），
  * 以及一段完整的「配对步骤与注意事项」说明。
  */
 class GlassesPairingActivity : AppCompatActivity() {

@@ -49,7 +49,11 @@ public class VoiceprintLibrary {
     private volatile float mThreshold;
 
     public VoiceprintLibrary(float threshold) {
-        mClient = new XfVoiceprintClient();
+        this(threshold, new XfVoiceprintClient());
+    }
+
+    VoiceprintLibrary(float threshold, XfVoiceprintClient client) {
+        mClient = client;
         mExec = Executors.newSingleThreadExecutor(r -> new Thread(r, "voiceprint"));
         mThreshold = threshold;
     }
@@ -73,18 +77,18 @@ public class VoiceprintLibrary {
         mFeatureToUser = map;
     }
 
-    /** 首次启动建组；分组已存在视为成功。之后的调用直接跳过（Settings 记录）。 */
+    /** 首次启动建组；未确认的业务错误一律返回失败，不猜测“已存在”错误码。 */
     public void ensureGroup(Listener<Boolean> listener) {
         if (!enqueue(() -> {
+            IOException error = null;
             try {
                 mClient.createGroup(GROUP_ID, "whisper demo");
-                deliver(listener, true, null);
-            } catch (XfVoiceprintClient.XfException e) {
-                // 已存在之类的业务错误当作成功；只有网络类失败需要外层知道。
-                deliver(listener, true, e.retryable ? e : null);
             } catch (IOException e) {
-                deliver(listener, null, e);
+                error = e;
+            } catch (RuntimeException e) {
+                error = new IOException("invalid voiceprint group response", e);
             }
+            deliver(listener, error == null ? true : null, error);
         })) {
             deliver(listener, null, new IOException("voiceprint queue shut down"));
         }
@@ -103,43 +107,41 @@ public class VoiceprintLibrary {
                 deliver(listener, null, null);
                 return;
             }
+            Match match;
             try {
                 XfVoiceprintClient.SearchResult r = mClient.searchFea(GROUP_ID, 5, pcm16k);
-                if (!r.scores.isEmpty()) {
-                    // 打印前几名分数便于校准阈值（同人一般 0.6+，异人常在 0.3 以下或为负）。
-                    StringBuilder sb = new StringBuilder();
-                    for (int i = 0; i < Math.min(3, r.scores.size()); i++) {
-                        XfVoiceprintClient.Score s = r.scores.get(i);
-                        if (sb.length() > 0) {
-                            sb.append(", ");
-                        }
-                        sb.append(s.featureId).append("=").append(String.format("%.2f", s.score));
-                    }
-                    android.util.Log.i(TAG, "1:N " + pcm16k.length * 1000L / 32000 + "ms top[" + sb
-                            + "] threshold=" + mThreshold);
-                }
-                for (XfVoiceprintClient.Score s : r.scores) {
-                    Long uid = map.get(s.featureId);
-                    if (uid != null) {
-                        if (s.score >= mThreshold) {
-                            deliver(listener, new Match(uid, s.score), null);
-                        } else {
-                            deliver(listener, null, null);
-                        }
-                        return;
-                    }
-                }
-                deliver(listener, null, null);
+                match = bestLocalMatch(r.scores, map, mThreshold);
             } catch (IOException e) {
                 deliver(listener, null, e);
+                return;
             } catch (RuntimeException e) {
-                // 回调链上的运行时异常会杀死单线程 worker，后续检索全部静默滞留——兜住并按失败回调。
-                android.util.Log.e(TAG, "search crashed on callback", e);
-                deliver(listener, null, new IOException("search callback crashed", e));
+                deliver(listener, null, new IOException("invalid voiceprint search result", e));
+                return;
             }
+            deliver(listener, match, null);
         })) {
             deliver(listener, null, new IOException("voiceprint queue shut down"));
         }
+    }
+
+    /** 不依赖云端返回顺序，只在有效且本地可映射的候选中按分数降序取最佳。 */
+    static Match bestLocalMatch(List<XfVoiceprintClient.Score> scores, Map<String, Long> map,
+                                float threshold) {
+        if (!Float.isFinite(threshold)) {
+            throw new IllegalArgumentException("invalid voiceprint threshold");
+        }
+        List<XfVoiceprintClient.Score> local = new ArrayList<>();
+        for (XfVoiceprintClient.Score score : scores) {
+            if (score != null && Float.isFinite(score.score) && map.containsKey(score.featureId)) {
+                local.add(score);
+            }
+        }
+        local.sort((a, b) -> Float.compare(b.score, a.score));
+        if (local.isEmpty() || local.get(0).score < threshold) {
+            return null;
+        }
+        XfVoiceprintClient.Score best = local.get(0);
+        return new Match(map.get(best.featureId), best.score);
     }
 
     /**

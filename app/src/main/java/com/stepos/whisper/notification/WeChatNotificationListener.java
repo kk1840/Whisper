@@ -14,9 +14,7 @@ import com.stepos.whisper.Settings;
 import com.stepos.whisper.data.AppDatabase;
 import com.stepos.whisper.service.RecordingService;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,7 +22,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 读取微信的通知消息，收到就立刻交给 {@link NotificationWorker} 提取待办（不等、不攒批）。
+ * 读取通知消息，收到就立刻交给 {@link NotificationWorker} 提取待办（不等、不攒批）。
  * 系统重发的相同通知（改排序、重新挂起、MessagingStyle 历史刷新等）在 {@link #DEDUP_MS} 内
  * 不重复处理。发送者解析：优先 MessagingStyle 里每条消息自带的发送者（群聊也能取准）；
  * 没有时用 title 当昵称，文本形如“昵称：内容”且前缀不长时按群聊拆出发言人
@@ -33,6 +31,7 @@ import java.util.Set;
 public class WeChatNotificationListener extends NotificationListenerService {
     private static final String TAG = "WeChatListener";
     private static final String WECHAT_PACKAGE = "com.tencent.mm";
+    private static final String DEMO_PACKAGE = "com.stepos.whisper.notificationdemo";
     /** 同一发送者的相同文本在这么长时间内重复出现（通知被系统重发）不再处理。 */
     private static final long DEDUP_MS = 10 * 60_000;
     /** 群聊回退启发式：文本形如“昵称：内容”，前缀超过这个字数不当群聊拆。 */
@@ -47,10 +46,10 @@ public class WeChatNotificationListener extends NotificationListenerService {
     private static final Set<String> BLOCKED_PACKAGES = new HashSet<>(Arrays.asList(
             "com.android.systemui", "android"));
 
-    /** 最近处理过的 发送者|文本 → elapsedRealtime，挡掉系统重发的相同通知。只在主线程访问。 */
-    private final Map<String, Long> mRecent = new LinkedHashMap<String, Long>() {
+    /** 最近处理过的 [包名, 发送者, 文本] → elapsedRealtime，挡掉同来源重发。只在主线程访问。 */
+    private final Map<List<String>, Long> mRecent = new LinkedHashMap<List<String>, Long>() {
         @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
+        protected boolean removeEldestEntry(Map.Entry<List<String>, Long> eldest) {
             return size() > 64;
         }
     };
@@ -79,15 +78,15 @@ public class WeChatNotificationListener extends NotificationListenerService {
         String text = parsed[1];
 
         long now = SystemClock.elapsedRealtime();
-        String dedupKey = sender + "|" + text;
+        List<String> dedupKey = Arrays.asList(sbn.getPackageName(), sender, text);
         Long seen = mRecent.get(dedupKey);
         if (seen != null && now - seen < DEDUP_MS) {
             // 同文本 10 分钟内重发：多半是系统重发同一条通知，不重复处理。
-            Log.i(TAG, "duplicate post ignored (" + sender + ": " + text + ")");
+            Log.i(TAG, "duplicate post ignored from " + sbn.getPackageName());
             return;
         }
         mRecent.put(dedupKey, now);
-        Log.i(TAG, "got message from " + sender + " (" + sbn.getPackageName() + "): " + text);
+        Log.i(TAG, "got message from " + sbn.getPackageName());
 
         // 收到就立刻处理：每条新消息（新文本）单独成一条任务，马上交给 AI。
         RecordingService service = RecordingService.getInstance();
@@ -95,7 +94,7 @@ public class WeChatNotificationListener extends NotificationListenerService {
         if (worker != null) {
             worker.enqueue(sender, text, sbn.getPostTime());
         } else {
-            // 录音服务被停：先落库，服务起来后 NotificationWorker 构造时会接着处理。
+            // 录音服务被停：落库即发布通知行；服务起来后恢复同一任务继续处理。
             AppDatabase db = AppDatabase.get(this);
             AppDatabase.IO.execute(() -> NotificationWorker.insertJob(db, sender, text,
                     sbn.getPostTime()));
@@ -113,23 +112,22 @@ public class WeChatNotificationListener extends NotificationListenerService {
     }
 
     /**
-     * 只处理微信的通知；调试测试模式（{@code DEBUG_NOTIF_ALL} 打开）下接收任何应用的通知，
-     * 方便没有微信在手时用 adb 发一条假通知或用短信验证整条链路。
-     * 本应用自己的通知永远不处理（否则自己发的灵动岛提醒会喂给自己），系统 UI 同理。
+     * 默认只处理微信与独立通知演示包；调试 all 模式需显式开启。
+     * 本应用自己的通知永远不处理，避免提醒再次喂给自己；系统 UI 同理。
      */
     private boolean acceptPackage(String pkg) {
-        if (WECHAT_PACKAGE.equals(pkg)) {
-            return true;
-        }
-        if (!BuildConfig.DEBUG || !Settings.isNotificationDebugAllApps(this)) {
+        if (pkg == null || getPackageName().equals(pkg) || BLOCKED_PACKAGES.contains(pkg)) {
             return false;
         }
-        return !getPackageName().equals(pkg) && !BLOCKED_PACKAGES.contains(pkg);
+        if (WECHAT_PACKAGE.equals(pkg) || DEMO_PACKAGE.equals(pkg)) {
+            return true;
+        }
+        return BuildConfig.DEBUG && Settings.isNotificationDebugAllApps(this);
     }
 
     // ---------------------------------------------------------------- 解析
 
-    /** 返回 [发送者昵称, 消息文本]；不是可处理的微信消息通知时返回 null。 */
+    /** 返回 [发送者昵称, 消息文本]；不是可处理的消息通知时返回 null。 */
     private static String[] parseMessage(Notification n) {
         Bundle extras = n.extras;
         if (extras == null) {
@@ -170,15 +168,8 @@ public class WeChatNotificationListener extends NotificationListenerService {
         if (array == null) {
             return null;
         }
-        List<Notification.MessagingStyle.Message> out = new ArrayList<>();
-        for (Parcelable parcelable : array) {
-            // 编译用的 android.jar 里 Message 的 stub 没声明实现 Parcelable，经 Object 转一下。
-            Object p = parcelable;
-            if (p instanceof Notification.MessagingStyle.Message) {
-                out.add((Notification.MessagingStyle.Message) p);
-            }
-        }
-        return out;
+        // EXTRA_MESSAGES 实际是 Bundle[]，而不是 Message 的 Parcelable 实例。
+        return Notification.MessagingStyle.Message.getMessagesFromBundleArray(array);
     }
 
     /** 第一个中英文冒号的位置；没有返回 -1。 */

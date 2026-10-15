@@ -42,7 +42,7 @@ public class WhisperApp extends Application {
         progress.setShowBadge(false);
         nm.createNotificationChannel(progress);
 
-        // Even G2 眼镜连接归应用级管理：录音服务和配对界面共用同一条连接。
+        // 智能眼镜连接归应用级管理：录音服务和配对界面共用同一条连接。
         GlassesManager.init(this);
     }
 }

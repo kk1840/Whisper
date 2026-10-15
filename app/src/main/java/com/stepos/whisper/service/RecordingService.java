@@ -52,9 +52,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,7 +69,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>audio 线程：AudioRecord 采集，每 100 ms 一帧 PCM 写入时间轴并推给 Step 流式识别；</li>
  *   <li>ws 线程（OkHttp）：接收云端中间结果（实时字幕）和整句定稿，定稿投递给处理线程；</li>
  *   <li>voiceprint 线程：讯飞声纹 1:N 检索与注册（结果回投处理线程补标）；</li>
- *   <li>处理线程（mProc）：句子归属（按说话段批量做声纹）、陌生人建档、会话管理、数据库写入；
+ *   <li>处理线程（mProc）：句子归属（逐句做声纹）、陌生人建档、会话管理、数据库写入；
  *       screenshot 线程（{@link ScreenshotWorker}）：聊天截图 OCR 和事项提取；
  *       screenshot-watch 线程（{@link ScreenshotWatcher}）：查询媒体库发现新截图。</li>
  * </ul>
@@ -82,28 +82,28 @@ public class RecordingService extends Service implements ConversationManager.Lis
     public static final String ACTION_TOGGLE = "com.stepos.whisper.action.TOGGLE";
 
     private static final int RESTORE_LINES = 200;
-    /** 有未识别内容时自动交给 AI 的间隔。 */
-    private static final long AUTO_EXTRACT_MINUTES = 1;
     private static final int VOICE_KEEP_SAMPLES = ModelManager.SAMPLE_RATE * 15;
 
     private static final int FRAME_SAMPLES = ModelManager.SAMPLE_RATE / 10;
-    /** 短于这个时长的句子不进说话段，改为单独送一次 1:N 检索。 */
+    /** 非机主句子的音频留证门槛（rememberVoice）。 */
     public static final long MIN_DURATION_MS = 1500;
-    /** 短句单独送检的下限：讯飞口径有效语音需 >0.5 秒，再短送了也只有空结果。 */
+    /** 讯飞口径有效语音需 >0.5 秒，再短不送检。 */
     private static final long SHORT_SEARCH_MIN_MS = 500;
-    /** 短句沿用上一位说话人的最大间隔。 */
-    private static final long SHORT_UTTERANCE_FOLLOW_MS = 5000;
+    /**
+     * 陌生人建档的最短句子：未命中必须"有信息量"才建档——中短句同本人实测分数 0.36~0.50
+     * 本就会打穿 0.45 阈值，未命中不代表陌生人；且 3 秒正好是讯飞的注册下限，建档句
+     * 自身就是可用的注册素材。
+     */
+    public static final long STRANGER_MIN_MS = 3000;
+    /** 短句未命中时跟随最近确认说话人的窗口，超出后落「未知」。 */
+    private static final long SPEAKER_STICKY_MS = 30_000;
     /** 声纹没命中时，多少秒内的连续未命中句子归给同一位新陌生人，避免每句都建一个。 */
     private static final long STRANGER_WINDOW_MS = 8000;
-    /** 声纹按“说话段”检索：句间静默超过该值即收段（讯飛建议检索音频 3~5 秒起，整段拼接送一次）。 */
-    private static final long TURN_GAP_MS = 2000;
-    /** 说话段内累计音频上限，到点立刻收段（讯飞单请求上限 4MB base64 ≈ 90 秒，15 秒很安全）。 */
-    private static final long TURN_MAX_MS = 15000;
-    /** 自动学习（陌生人建档）给单个用户保留的云端声纹条数上限。 */
+    /** 自动学习（陌生人建档、学习宽限跟随）给单个用户保留的云端声纹条数上限。 */
     private static final int AUTO_ENROLL_FEATURE_CAP = 3;
     /**
      * 手动指认/合并的学习宽限期：讯飞注册是异步入库的（实测延迟可超过十几秒），刚学的特征
-     * 在窗口内检索不到；此期间段级未命中跟随学习目标而不是再建陌生人，否则"合并后一说话
+     * 在窗口内检索不到；此期间未命中的句子跟随学习目标而不是再建陌生人，否则"合并后一说话
      * 又冒出陌生人N"无限循环。
      */
     private static final long LEARN_GRACE_MS = 120_000;
@@ -165,40 +165,24 @@ public class RecordingService extends Service implements ConversationManager.Lis
     private ConversationManager mConversations;
     private final Map<Long, ArrayDeque<byte[]>> mVoices = new HashMap<>();
     private final Map<Long, UserInfo> mUsers = new HashMap<>();
-    private long mLastSpeakerId = TranscriptLine.NO_USER;
-    private long mLastSpeakerEndMs;
+    /** 尚未返回的逐句检索：界面行 id → 数据库发言 id，手动指认先移除以使迟到回调失效。 */
+    private final Map<Long, Long> mPendingVoiceprints = new HashMap<>();
+    private final UtteranceExtractionState mExtractionState = new UtteranceExtractionState();
     /** 最近一次声纹未命中建档的陌生人（去重窗口内归同一人）。 */
     private long mLastStrangerId = TranscriptLine.NO_USER;
     private long mLastStrangerAtMs;
+    /** 当前陌生人还没注册出去的句子音频（处理线程）：单句常不足 3 秒，攒够再拼接注册。 */
+    private long mStrangerVoiceId = TranscriptLine.NO_USER;
+    private final List<byte[]> mStrangerVoice = new ArrayList<>();
     /** 学习宽限期：最近一次手动指认/合并的目标用户与截止时刻（处理线程）。 */
     private long mLearnUserId = TranscriptLine.NO_USER;
     private long mLearnUntilMs;
-
-    /** 说话段里一句已上屏、等段收口后统一做声纹归属的句子。 */
-    private static class TurnSentence {
-        final long lineId;
-        final String text;
-        final long startMs;
-        final long endMs;
-        final long durationMs;
-        final Long provisional;
-        final byte[] pcm;
-
-        TurnSentence(long lineId, String text, long startMs, long endMs, long durationMs,
-                     Long provisional, byte[] pcm) {
-            this.lineId = lineId;
-            this.text = text;
-            this.startMs = startMs;
-            this.endMs = endMs;
-            this.durationMs = durationMs;
-            this.provisional = provisional;
-            this.pcm = pcm;
-        }
-    }
-
-    /** 说话段缓冲（处理线程）：句子定稿先临时归属上屏，段收口后整段送声纹。 */
-    private final List<TurnSentence> mTurn = new ArrayList<>();
-    private long mTurnBytes;
+    /**
+     * 短句未命中的粘性锚点（处理线程）：最近一次确认归属（声纹命中、手动指认、陌生人
+     * 建档）的用户与该句结束时刻。短句素材常打不到检索阈值，身份交给上下文兜底。
+     */
+    private long mLastVoiceUserId = TranscriptLine.NO_USER;
+    private long mLastVoiceAtMs;
 
     // 主线程
     private boolean mReady;
@@ -214,7 +198,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
         mDb = AppDatabase.get(this);
         // 处理线程先建好：下面的截图队列一构造就可能开始处理遗留任务并回调进来。
         mProc = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "speech-proc"));
-        mExtraction = new ExtractionWorker(this, mDb, new ExtractionWorker.Listener() {
+        mExtraction = new ExtractionWorker(this, mDb, mExtractionState, new ExtractionWorker.Listener() {
             @Override
             public void onAiStateChanged(long from, long to, int state, boolean reset) {
                 ServiceState.updateAiState(from, to, state, reset);
@@ -276,8 +260,8 @@ public class RecordingService extends Service implements ConversationManager.Lis
         });
         mNotifications = new NotificationWorker(this, mDb, new NotificationWorker.Listener() {
             @Override
-            public void onProgress(NotificationWorker.Stage stage, String sender, int count) {
-                ServiceState.setNotifProgress(new ServiceState.NotifProgress(stage.ordinal(), sender, count));
+            public void onLine(TranscriptLine line) {
+                ServiceState.upsertNotificationLine(line);
             }
 
             @Override
@@ -336,7 +320,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
         if (Settings.isScreenshotWatchEnabled(this)) {
             mWatcher.start();
         }
-        // 配对过 Even G2 眼镜且开关打开时，在后台自动重连；连接本身由 GlassesManager 持有，服务退出不断开。
+        // 配对过智能眼镜且开关打开时，在后台自动重连；连接本身由 GlassesManager 持有，服务退出不断开。
         GlassesManager.applyEnabled(this);
 
         PowerManager pm = getSystemService(PowerManager.class);
@@ -351,8 +335,6 @@ public class RecordingService extends Service implements ConversationManager.Lis
         mProc.execute(this::initEngine);
         mProc.scheduleWithFixedDelay(() -> mConversations.tick(System.currentTimeMillis()),
                 30, 30, TimeUnit.SECONDS);
-        mProc.scheduleWithFixedDelay(this::extractPending, AUTO_EXTRACT_MINUTES, AUTO_EXTRACT_MINUTES,
-                TimeUnit.MINUTES);
 
         mNetworkCallback = new ConnectivityManager.NetworkCallback() {
             @Override
@@ -401,9 +383,13 @@ public class RecordingService extends Service implements ConversationManager.Lis
         mScreenshots.shutdown();
         mNotifications.shutdown();
         mProc.execute(() -> {
-            flushTurn();
-            mConversations.endAll();
             mExtraction.shutdown();
+            synchronized (ServiceState.class) {
+                mPendingVoiceprints.clear();
+                mExtractionState.clear();
+                ServiceState.setPendingVoiceprints(false);
+                mConversations.endAll();
+            }
             if (mStream != null) {
                 mStream.stop();
             }
@@ -437,8 +423,6 @@ public class RecordingService extends Service implements ConversationManager.Lis
 
     public void pause() {
         mWantRecording = false;
-        // 停录即收口说话段，最后一段话也要做声纹归属。
-        proc(this::flushTurn);
         stopAudio();
         if (mReady) {
             ServiceState.setStatus(ServiceState.Status.PAUSED);
@@ -571,15 +555,16 @@ public class RecordingService extends Service implements ConversationManager.Lis
             mVoices.remove(from);
             //noinspection ResultOfMethodCallIgnored
             voiceFile(this, from).delete();
-            if (mLastSpeakerId == from) {
-                mLastSpeakerId = to;
-            }
+            // 新特征（划转+语音证据注册）还在讯飞异步入库：宽限期内未命中的句子跟随 to，不再建陌生人。
+            mLearnUserId = to;
+            mLearnUntilMs = System.currentTimeMillis() + LEARN_GRACE_MS;
             if (mLastStrangerId == from) {
                 mLastStrangerId = to;
             }
-            // 新特征（划转+语音证据注册）还在讯飞异步入库：宽限期内未命中的段跟随 to。
-            mLearnUserId = to;
-            mLearnUntilMs = System.currentTimeMillis() + LEARN_GRACE_MS;
+            if (mStrangerVoiceId == from) {
+                // 攒着的本来就是同一个人的声音，跟着划给 to。
+                mStrangerVoiceId = to;
+            }
             if (mVoiceprint != null) {
                 loadUsers();
             }
@@ -600,7 +585,7 @@ public class RecordingService extends Service implements ConversationManager.Lis
             return;
         }
         try {
-            enrollAudioToUser(to, WavReader.readPcm16k(wav), true);
+            enrollAudioToUser(to, WavReader.readPcm16k(wav));
         } catch (IOException e) {
             Log.w(TAG, "voice evidence enroll failed: " + e);
         }
@@ -612,38 +597,71 @@ public class RecordingService extends Service implements ConversationManager.Lis
      * 指认即学习：时间轴窗口里还能切出这句话的音频（≥3 秒）就顺带注册给该用户。
      */
     public void assignLine(long lineId, long startMs, long endMs, long userId) {
+        // 在入队时就阻止声纹结果，避免已排队的回调抢在手动指认任务前产生副作用。
+        final long manualRevision;
+        synchronized (ServiceState.class) {
+            ServiceState.blockVoiceprint(lineId);
+            manualRevision = mExtractionState.pending(startMs, endMs);
+        }
         proc(() -> {
-            mDb.utteranceDao().assignByTime(startMs, endMs, userId);
-            if (!mUsers.containsKey(userId) && mVoiceprint != null) {
+            if (!mUsers.containsKey(userId)) {
                 loadUsers();
             }
+            UserInfo info = mUsers.get(userId);
+            synchronized (ServiceState.class) {
+                if (sInstance != this || !mExtractionState.isCurrent(startMs, endMs, manualRevision)) return;
+                Long utteranceId = mPendingVoiceprints.remove(lineId);
+                if (info != null) {
+                    if (utteranceId != null) {
+                        mDb.utteranceDao().assignUser(Collections.singletonList(utteranceId), userId);
+                    } else {
+                        mDb.utteranceDao().assignByTime(startMs, endMs, userId);
+                    }
+                    ServiceState.relabelLine(lineId, info.name, userId, info.color);
+                    // 手动指认是最强的归属结论，刷新粘性锚点让随后的短句跟随它。
+                    mLastVoiceUserId = userId;
+                    mLastVoiceAtMs = endMs;
+                }
+                ServiceState.setPendingVoiceprints(!mPendingVoiceprints.isEmpty());
+                if (mExtractionState.ready(startMs, endMs, manualRevision)) {
+                    for (Utterance row : mDb.utteranceDao().getExact(startMs, endMs)) {
+                        mExtraction.enqueueSentence(row);
+                    }
+                    mExtraction.retryPending();
+                }
+            }
+            refreshLatestSpeaker(lineId);
             if (mVoiceprint != null && mTimeline != null) {
                 long startB = mTimeline.globalByteAtWallMs(startMs);
                 long endB = mTimeline.globalByteAtWallMs(endMs);
                 if (startB >= 0 && endB > startB) {
-                    enrollAudioToUser(userId, mTimeline.cutGlobal(startB, endB), true);
+                    synchronized (ServiceState.class) {
+                        if (mExtractionState.isCurrent(startMs, endMs, manualRevision)) {
+                            enrollAudioToUser(userId, mTimeline.cutGlobal(startB, endB),
+                                    () -> mExtractionState.isCurrent(startMs, endMs, manualRevision));
+                        }
+                    }
                 }
             }
-            // 指认即学习：新特征异步入库有延迟，宽限期内未命中的段跟随该用户，不再建陌生人。
+            // 指认即学习：新特征异步入库有延迟，宽限期内未命中的句子跟随该用户，不再建陌生人。
             mLearnUserId = userId;
             mLearnUntilMs = System.currentTimeMillis() + LEARN_GRACE_MS;
-            UserInfo info = mUsers.get(userId);
-            if (info != null) {
-                ServiceState.relabelLine(lineId, info.name, userId, info.color);
-            }
         });
     }
 
     /** 清除全部聊天内容（转写和待识别队列），用户和事项保留。 */
     public void clearAllChats() {
         proc(() -> {
-            // 行马上要被清掉，说话段不再做归属。
-            mTurn.clear();
-            mTurnBytes = 0;
-            mConversations.clear();
-            mExtraction.clearQueue();
-            mDb.utteranceDao().deleteAll();
-            ServiceState.clearLines();
+            // 清空后使所有尚未返回的声纹结果失效。
+            synchronized (ServiceState.class) {
+                mPendingVoiceprints.clear();
+                mExtractionState.clear();
+                mConversations.clear();
+                mExtraction.clearQueue();
+                mDb.utteranceDao().deleteAll();
+                ServiceState.clearLines();
+                ServiceState.setPendingVoiceprints(false);
+            }
         });
     }
 
@@ -652,42 +670,18 @@ public class RecordingService extends Service implements ConversationManager.Lis
         proc(this::extractPending);
     }
 
-    /**
-     * 每 {@link #AUTO_EXTRACT_MINUTES} 分钟或手动触发（处理线程）：进行中的会话先把已说的部分交给 AI（会话继续）；
-     * 其余未识别的内容按聊天块（间隔超过会话超时即分块）送去识别，
-     * 每块按其中的非机主用户分别提取，只有机主或无法归属的块记在机主名下。
-     */
+    /** Manual retry and startup recovery enqueue each ready sentence, never whole sessions. */
     private void extractPending() {
-        mConversations.checkpoint(System.currentTimeMillis());
-        List<Utterance> all = mDb.utteranceDao().getNotExtracted();
-        User owner = mDb.userDao().getOwner();
-        int i = 0;
-        while (i < all.size()) {
-            int j = i;
-            long blockEnd = all.get(i).endTime;
-            while (j + 1 < all.size()
-                    && all.get(j + 1).startTime - blockEnd <= ConversationManager.SESSION_TIMEOUT_MS) {
-                j++;
-                blockEnd = Math.max(blockEnd, all.get(j).endTime);
-            }
-            long blockStart = all.get(i).startTime;
-            Set<Long> userIds = new LinkedHashSet<>();
-            for (int k = i; k <= j; k++) {
-                Long uid = all.get(k).userId;
-                UserInfo info = uid == null ? null : mUsers.get(uid);
-                if (info != null && !info.owner) {
-                    userIds.add(uid);
-                }
-            }
-            if (userIds.isEmpty() && owner != null) {
-                userIds.add(owner.id);
-            }
-            for (long uid : userIds) {
-                mExtraction.enqueue(uid, blockStart, blockEnd);
-            }
-            i = j + 1;
+        for (Utterance row : mDb.utteranceDao().getUnfinished()) {
+            mExtraction.enqueueSentence(row);
         }
         mExtraction.retryPending();
+    }
+
+    private void queueSentence(long utteranceId, long startMs, long endMs) {
+        mExtractionState.ready(startMs, endMs);
+        List<Utterance> rows = mDb.utteranceDao().getByIds(Collections.singletonList(utteranceId));
+        if (!rows.isEmpty()) mExtraction.enqueueSentence(rows.get(0));
     }
 
     // ---------------------------------------------------------------- 初始化（处理线程）
@@ -702,19 +696,6 @@ public class RecordingService extends Service implements ConversationManager.Lis
         mTimeline = new PcmTimeline(90);
         mVoiceprint = new VoiceprintLibrary(Settings.getSpeakerThreshold(this));
         mStream = new StepAsrStreamClient(mTimeline, mCloudListener);
-        if (!mStream.hasApiKey() || !mVoiceprint.hasCredentials()) {
-            fail("未配置 StepFun 或讯飞密钥（local.properties）");
-            return;
-        }
-        if (!Settings.isXfGroupReady(this)) {
-            mVoiceprint.ensureGroup((ok, err) -> {
-                if (err != null) {
-                    Log.w(TAG, "ensureGroup: " + err);
-                } else {
-                    Settings.setXfGroupReady(RecordingService.this, true);
-                }
-            });
-        }
         loadUsers();
         long now = System.currentTimeMillis();
         for (User u : mDb.userDao().getAll()) {
@@ -724,8 +705,20 @@ public class RecordingService extends Service implements ConversationManager.Lis
         }
         mDb.utteranceDao().deleteBefore(now - UTTERANCE_RETENTION_MS);
         restoreLines();
-        mExtraction.retryPending();
-
+        extractPending();
+        if (!mStream.hasApiKey() || !mVoiceprint.hasCredentials()) {
+            fail("未配置 StepFun 或讯飞密钥（local.properties）");
+            return;
+        }
+        if (!Settings.isXfGroupReady(this)) {
+            mVoiceprint.ensureGroup((ok, err) -> {
+                if (err != null) {
+                    Log.w(TAG, "ensureGroup: " + err);
+                } else if (Boolean.TRUE.equals(ok)) {
+                    Settings.setXfGroupReady(RecordingService.this, true);
+                }
+            });
+        }
         mMain.post(() -> {
             mReady = true;
             if (mWantRecording) {
@@ -928,11 +921,9 @@ public class RecordingService extends Service implements ConversationManager.Lis
     // ---------------------------------------------------------------- 识别与归属（处理线程）
 
     /**
-     * 云端整句定稿：句子先按兜底策略（沿用上一位说话人/“待识别”灰色）上屏入库；达到
-     * {@link #MIN_DURATION_MS} 的进入说话段缓冲，段收口（静默超过 {@link #TURN_GAP_MS} 或段内
-     * 音频达到 {@link #TURN_MAX_MS}）后把整段拼接的音频送讯飞做一次 1:N 检索，再统一补标段内
-     * 所有句子——整段音频比单句长，分数更稳（讯飛建议检索音频 3~5 秒起）。没命中则整段归
-     * 陌生人并顺手注册声纹（转写里显示“未知”）。更短的句子走 {@link #searchShortSentence}。
+     * 云端整句定稿：每句先待识别，只送本句 PCM。证据按句长分层——命中永远优先；
+     * ≥{@link #STRANGER_MIN_MS} 的未命中有信息量，走陌生人建档；更短的未命中（含检索
+     * 失败）素材常打不到阈值，跟随上下文归属（学习宽限 > 粘性锚点），都没有才落「未知」。
      */
     private void handleSentence(String transcript, long startByte, long endByte) {
         if (sInstance != this) {
@@ -945,158 +936,134 @@ public class RecordingService extends Service implements ConversationManager.Lis
         long startMs = mTimeline.wallMsAtGlobal(startByte);
         long endMs = Math.max(startMs + 500, mTimeline.wallMsAtGlobal(endByte));
         long durationMs = (endByte - startByte) * 1000 / PcmTimeline.BYTES_PER_SEC;
-
-        Long provisional = null;
-        if (mLastSpeakerId != TranscriptLine.NO_USER && mUsers.containsKey(mLastSpeakerId)
-                && startMs - mLastSpeakerEndMs < SHORT_UTTERANCE_FOLLOW_MS) {
-            provisional = mLastSpeakerId;
+        final long utteranceId;
+        final long lineId;
+        synchronized (ServiceState.class) {
+            mExtractionState.pending(startMs, endMs);
+            ServiceState.setPendingVoiceprints(true);
+            utteranceId = saveUtterance(null, text, startMs, endMs);
+            lineId = displaySentence(text, startMs, endMs);
+            mPendingVoiceprints.put(lineId, utteranceId);
         }
-        long lineId = displaySentence(provisional, text, startMs, endMs);
-        final Long fallback = provisional;
-
-        if (durationMs < MIN_DURATION_MS) {
-            searchShortSentence(fallback, lineId, startByte, endByte, startMs, endMs, durationMs);
-            return;
-        }
-        byte[] pcm = mTimeline.cutGlobal(startByte, endByte);
-        if (pcm == null) {
-            finishSentence(fallback, lineId, startMs, endMs, durationMs, null, fallback);
-            return;
-        }
-        if (!mTurn.isEmpty() && startMs - mTurn.get(mTurn.size() - 1).endMs > TURN_GAP_MS) {
-            // 静默了太久：上一段先收口（正常情况下定时器已处理，这里兜底）。
-            flushTurn();
-        }
-        mTurn.add(new TurnSentence(lineId, text, startMs, endMs, durationMs, fallback, pcm));
-        mTurnBytes += pcm.length;
-        if (mTurnBytes >= TURN_MAX_MS * PcmTimeline.BYTES_PER_SEC / 1000) {
-            flushTurn();
-        } else {
-            scheduleTurnFlush();
-        }
-    }
-
-    /**
-     * 短句（&lt; {@link #MIN_DURATION_MS}）不进说话段——段是整段一个身份，短句混进去只会稀释
-     * 整段音频；改为单独送一次 1:N 检索（&ge; {@link #SHORT_SEARCH_MIN_MS} 才送）：命中就用检索
-     * 结果覆盖兜底归属（纠正“对方插话的短回应被 5 秒跟随启发式跟成上一个说话人”），没命中或
-     * 检索失败维持兜底（跟随/“未知”），最差也只是退回短句不送检时的行为。
-     * 分数沿用常规阈值不再收紧：同本人短句分数本就偏低（实测 0.36~0.50），再抬高门槛就永远
-     * 不触发；异人常在 0.3 以下，错配风险很小。短句不做陌生人建档（注册素材至少要 3 秒）。
-     */
-    private void searchShortSentence(Long provisional, long lineId, long startByte, long endByte,
-                                     long startMs, long endMs, long durationMs) {
         byte[] pcm = mTimeline.cutGlobal(startByte, endByte);
         if (mVoiceprint == null || pcm == null || durationMs < SHORT_SEARCH_MIN_MS) {
-            finishSentence(provisional, lineId, startMs, endMs, durationMs, null, provisional);
+            finishSentence(lineId, startMs, endMs, durationMs, null,
+                    durationMs < STRANGER_MIN_MS ? followShortMiss(startMs, null) : null);
             return;
         }
         mVoiceprint.search(pcm, (match, err) -> proc(() -> {
-            if (err != null) {
-                Log.w(TAG, "short sentence search failed: " + err);
+            synchronized (ServiceState.class) {
+                if (sInstance == this && ServiceState.isVoiceprintBlocked(lineId)) {
+                    // 手动指认已入队，等其落库后再解除门禁。
+                    return;
+                }
+                if (sInstance != this || !mPendingVoiceprints.containsKey(lineId)
+                        || !ServiceState.canApplyVoiceprint(lineId)) {
+                    Long dropped = mPendingVoiceprints.remove(lineId);
+                    if (sInstance == this && dropped != null) {
+                        // UI history may have evicted the line while search was in flight.
+                        queueSentence(dropped, startMs, endMs);
+                    }
+                    ServiceState.setPendingVoiceprints(!mPendingVoiceprints.isEmpty());
+                    return;
+                }
+                if (err != null) {
+                    Log.w(TAG, "voiceprint search failed: " + err);
+                    finishSentence(lineId, startMs, endMs, durationMs, null,
+                            durationMs < STRANGER_MIN_MS ? followShortMiss(startMs, pcm) : null);
+                    return;
+                }
+                Long finalId = matchedUser(match);
+                if (finalId == null) {
+                    finalId = durationMs >= STRANGER_MIN_MS
+                            ? strangerFor(text, startMs, endMs, pcm)
+                            : followShortMiss(startMs, pcm);
+                }
+                finishSentence(lineId, startMs, endMs, durationMs, pcm, finalId);
             }
-            Long finalId = match != null && mUsers.containsKey(match.userId) ? match.userId : provisional;
-            finishSentence(provisional, lineId, startMs, endMs, durationMs, null, finalId);
         }));
     }
 
-    /** 距段尾静默 {@link #TURN_GAP_MS} 后自动收段（定时器兜底，不依赖下一句到来）。 */
-    private void scheduleTurnFlush() {
-        final long lastEnd = mTurn.get(mTurn.size() - 1).endMs;
-        try {
-            mProc.schedule(() -> {
-                if (!mTurn.isEmpty() && System.currentTimeMillis() - lastEnd >= TURN_GAP_MS - 100) {
-                    flushTurn();
-                }
-            }, TURN_GAP_MS + 200, TimeUnit.MILLISECONDS);
-        } catch (RejectedExecutionException ignored) {
-            // 服务正在销毁：句子的临时归属已是最终状态。
-        }
+    /** 身份来自有效声纹、用户明确指认或短句上下文跟随；未命中的长句由调用方走陌生人建档。 */
+    private Long matchedUser(VoiceprintLibrary.Match match) {
+        return match != null && mUsers.containsKey(match.userId) ? match.userId : null;
     }
 
     /**
-     * 说话段收口：整段 PCM 送一次 1:N 检索。命中则段内所有句子统一改标；
-     * 未命中归陌生人（沿用去重窗口），并用整段音频注册该陌生人——整段通常远超 3 秒，
-     * 解决以前“单句太短注册不上、陌生人永远没有声纹”的问题。
+     * 短句（&lt;{@link #STRANGER_MIN_MS}）未命中的兜底（处理线程）：学习宽限期最权威——
+     * 刚指认/合并的人的特征还在讯飞异步入库，检索不到不代表不认识，句子跟随学习目标并
+     * 攒素材；否则跟随粘性窗口内最近一次确认归属的说话人。宽限跟随才算学习素材——粘性
+     * 跟随是弱证据，若把跟随句注册给锚点用户，他人插话会污染该用户的声纹特征。
      */
-    private void flushTurn() {
-        if (mTurn.isEmpty()) {
-            return;
+    private Long followShortMiss(long startMs, byte[] pcm) {
+        Long follow = followShortMiss(mLearnUserId, mLearnUntilMs, System.currentTimeMillis(),
+                mLastVoiceUserId, mLastVoiceAtMs, startMs, mUsers.keySet());
+        if (follow != null && follow == mLearnUserId && pcm != null) {
+            enrollAudioAuto(follow, pcm);
         }
-        List<TurnSentence> turn = new ArrayList<>(mTurn);
-        mTurn.clear();
-        mTurnBytes = 0;
-        int total = 0;
-        for (TurnSentence s : turn) {
-            total += s.pcm.length;
-        }
-        if (mVoiceprint == null || total * 1000L / PcmTimeline.BYTES_PER_SEC < MIN_DURATION_MS) {
-            for (TurnSentence s : turn) {
-                finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, null, s.provisional);
-            }
-            return;
-        }
-        byte[] pcm = new byte[total];
-        int pos = 0;
-        for (TurnSentence s : turn) {
-            System.arraycopy(s.pcm, 0, pcm, pos, s.pcm.length);
-            pos += s.pcm.length;
-        }
-        long firstStart = turn.get(0).startMs;
-        long lastEnd = turn.get(turn.size() - 1).endMs;
-        String firstText = turn.get(0).text;
-        mVoiceprint.search(pcm, (match, err) -> proc(() -> {
-            if (err != null) {
-                Log.w(TAG, "voiceprint search failed: " + err);
-                // 检索不可用且不会重试：维持临时归属，连临时归属都没有的句子落成“未知”。
-                for (TurnSentence s : turn) {
-                    finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, null, s.provisional);
-                }
-                return;
-            }
-            if (match != null && mUsers.containsKey(match.userId)) {
-                for (TurnSentence s : turn) {
-                    finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, s.pcm, match.userId);
-                }
-                return;
-            }
-            // 没命中。
-            // 手动学习宽限期内：刚指认/合并的人，新特征还在讯飞异步入库中检索不到，跟随学习
-            // 目标并顺手把这段也注册给他（自动口径，受条数上限约束），不再重复建陌生人。
-            if (mLearnUserId != TranscriptLine.NO_USER && mUsers.containsKey(mLearnUserId)
-                    && System.currentTimeMillis() < mLearnUntilMs) {
-                long learnId = mLearnUserId;
-                enrollAudioToUser(learnId, pcm, false);
-                for (TurnSentence s : turn) {
-                    finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, s.pcm, learnId);
-                }
-                return;
-            }
-            // 窗口外的连续未命中归同一位陌生人，窗口外建档新陌生人。
-            long strangerId = mLastStrangerId;
-            if (strangerId == TranscriptLine.NO_USER || !mUsers.containsKey(strangerId)
-                    || firstStart - mLastStrangerAtMs > STRANGER_WINDOW_MS) {
-                strangerId = createStranger(firstText, lastEnd);
-            }
-            mLastStrangerAtMs = lastEnd;
-            enrollAudioToUser(strangerId, pcm, false);
-            for (TurnSentence s : turn) {
-                finishSentence(s.provisional, s.lineId, s.startMs, s.endMs, s.durationMs, s.pcm, strangerId);
-            }
-        }));
+        return follow;
     }
 
-    /** 句子先以临时归属上屏入库，返回界面行 id（声纹结果回来后按 id 补标）。 */
-    private long displaySentence(Long userId, String text, long startMs, long endMs) {
-        saveUtterance(userId, text, startMs, endMs);
-        if (userId != null) {
-            UserInfo info = mUsers.get(userId);
-            mMain.post(() -> {
-                if (sInstance == this) mLive.setLatestLine(info.name, info.color, text);
-            });
-            return ServiceState.addLine(startMs, endMs, info.name, text, userId, info.color, Utterance.AI_NONE);
+    /** 纯决策：宽限跟随 &gt; 粘性跟随 &gt; 未知；目标必须仍是已知用户。 */
+    static Long followShortMiss(long learnUserId, long learnUntilMs, long now,
+                                long lastVoiceUserId, long lastVoiceAtMs, long startMs,
+                                Set<Long> knownUserIds) {
+        if (learnUserId != TranscriptLine.NO_USER && learnUserId != 0
+                && knownUserIds.contains(learnUserId) && now < learnUntilMs) {
+            return learnUserId;
         }
-        // 没有可沿用的临时归属：声纹结论没回来之前先标“待识别”，结论落地后统一补标。
+        if (lastVoiceUserId != TranscriptLine.NO_USER && lastVoiceUserId != 0
+                && knownUserIds.contains(lastVoiceUserId)
+                && startMs - lastVoiceAtMs <= SPEAKER_STICKY_MS) {
+            return lastVoiceUserId;
+        }
+        return null;
+    }
+
+    /**
+     * 声纹未命中的长句归陌生人（处理线程）：学习宽限期内跟随刚指认/合并的人——新特征还在
+     * 讯飞异步入库，检索不到不代表不认识；否则沿用去重窗口内的陌生人，窗口外建档新陌生人
+     * 并弹命名窗。同一陌生人的句子音频在这里累积，攒够 3 秒拼接注册成云端声纹——单句常不足
+     * 讯飞的注册下限，攒着才能让陌生人下次开口就被认出来。
+     */
+    private Long strangerFor(String text, long startMs, long endMs, byte[] pcm) {
+        if (mLearnUserId != TranscriptLine.NO_USER && mUsers.containsKey(mLearnUserId)
+                && System.currentTimeMillis() < mLearnUntilMs) {
+            enrollAudioAuto(mLearnUserId, pcm);
+            return mLearnUserId;
+        }
+        long strangerId = mLastStrangerId;
+        if (strangerId == TranscriptLine.NO_USER || !mUsers.containsKey(strangerId)
+                || startMs - mLastStrangerAtMs > STRANGER_WINDOW_MS) {
+            strangerId = createStranger(text, endMs);
+        }
+        mLastStrangerAtMs = endMs;
+        if (pcm != null) {
+            if (mStrangerVoiceId != strangerId) {
+                mStrangerVoice.clear();
+                mStrangerVoiceId = strangerId;
+            }
+            mStrangerVoice.add(pcm);
+            int total = 0;
+            for (byte[] clip : mStrangerVoice) {
+                total += clip.length;
+            }
+            if (total >= PcmTimeline.BYTES_PER_SEC * 3) {
+                byte[] joined = new byte[total];
+                int pos = 0;
+                for (byte[] clip : mStrangerVoice) {
+                    System.arraycopy(clip, 0, joined, pos, clip.length);
+                    pos += clip.length;
+                }
+                mStrangerVoice.clear();
+                enrollAudioAuto(strangerId, joined);
+            }
+        }
+        return strangerId;
+    }
+
+    /** 句子一律先待识别，返回界面行 id。 */
+    private long displaySentence(String text, long startMs, long endMs) {
         String speaker = getString(R.string.speaker_pending);
         mMain.post(() -> {
             if (sInstance == this) mLive.setLatestLine(speaker, TranscriptLine.COLOR_UNKNOWN, text);
@@ -1116,34 +1083,46 @@ public class RecordingService extends Service implements ConversationManager.Lis
         return lineId;
     }
 
-    /**
-     * 声纹结果落地：最终归属与临时归属不同则改库改界面；会话、声音缓存和说话人状态统一更新。
-     * finalUserId 为 null 表示声纹不可用（网络失败/句子太短），维持临时归属；连临时归属都没有的
-     * 句子此时已确定无法归属，从“待识别”落成“未知”。
-     */
-    private void finishSentence(Long provisional, long lineId, long startMs, long endMs, long durationMs,
+    /** 只消费仍有效的逐句回调；手动指认、清空或服务销毁后不再改库或产生副作用。 */
+    private void finishSentence(long lineId, long startMs, long endMs, long durationMs,
                                 byte[] pcm, Long finalUserId) {
-        if (finalUserId == null || !mUsers.containsKey(finalUserId)) {
-            if (ServiceState.resolvePendingLine(lineId, getString(R.string.speaker_pending),
-                    getString(R.string.speaker_unknown))) {
-                refreshLatestSpeaker(lineId);
+        synchronized (ServiceState.class) {
+            if (ServiceState.isVoiceprintBlocked(lineId)) {
+                return;
             }
-            return;
-        }
-        long uid = finalUserId;
-        UserInfo info = mUsers.get(uid);
-        if (provisional == null || provisional != uid) {
-            mDb.utteranceDao().assignByTime(startMs, endMs, uid);
-            ServiceState.relabelLine(lineId, info.name, uid, info.color);
-            refreshLatestSpeaker(lineId);
-        }
-        mDb.userDao().touch(uid, endMs);
-        mLastSpeakerId = uid;
-        mLastSpeakerEndMs = endMs;
-        if (!info.owner) {
-            mConversations.onUtterance(uid, startMs, endMs);
-            if (durationMs >= MIN_DURATION_MS && pcm != null) {
-                rememberVoice(uid, pcm);
+            try {
+                Long utteranceId = mPendingVoiceprints.remove(lineId);
+                if (sInstance != this || utteranceId == null || !ServiceState.canApplyVoiceprint(lineId)) {
+                    return;
+                }
+                if (finalUserId == null || !mUsers.containsKey(finalUserId)) {
+                    if (ServiceState.resolvePendingLine(lineId, getString(R.string.speaker_pending),
+                            getString(R.string.speaker_unknown))) {
+                        refreshLatestSpeaker(lineId);
+                    }
+                    queueSentence(utteranceId, startMs, endMs);
+                    return;
+                }
+                long uid = finalUserId;
+                UserInfo info = mUsers.get(uid);
+                if (!ServiceState.applyVoiceprint(lineId, info.name, uid, info.color)) {
+                    return;
+                }
+                // 确认归属（命中、跟随或建档）即刷新粘性锚点，短句未命中时跟随它。
+                mLastVoiceUserId = uid;
+                mLastVoiceAtMs = endMs;
+                mDb.utteranceDao().assignUser(Collections.singletonList(utteranceId), uid);
+                refreshLatestSpeaker(lineId);
+                mDb.userDao().touch(uid, endMs);
+                queueSentence(utteranceId, startMs, endMs);
+                if (!info.owner) {
+                    mConversations.onUtterance(uid, startMs, endMs);
+                    if (durationMs >= MIN_DURATION_MS && pcm != null) {
+                        rememberVoice(uid, pcm);
+                    }
+                }
+            } finally {
+                ServiceState.setPendingVoiceprints(!mPendingVoiceprints.isEmpty());
             }
         }
     }
@@ -1182,19 +1161,22 @@ public class RecordingService extends Service implements ConversationManager.Lis
         return userId;
     }
 
+    /** 仅手动指认/合并注册本次明确选择的语音；至少 3 秒，失败不重试。 */
+    private void enrollAudioToUser(long userId, byte[] pcm) {
+        enrollAudioToUser(userId, pcm, () -> true);
+    }
+
     /**
-     * 把一段已抓到的 PCM 注册成该用户的云端声纹（陌生人建档、手动纠正学习共用）。
-     * 3 秒以上才值得注册；自动学习（陌生人建档）条数有上限，防止特征爆炸。手动指认/合并是
-     * 用户给出的强信号，不受该上限约束，只受 {@link VoiceprintLibrary#MAX_FEATURES_PER_USER}
-     * 兜底；失败不重试。
+     * 自动注册（陌生人建档、学习宽限跟随）：同样至少 3 秒、失败不重试，但每人最多
+     * {@link #AUTO_ENROLL_FEATURE_CAP} 条，防止陌生人误建档把云端特征灌爆。
      */
-    private void enrollAudioToUser(long userId, byte[] pcm, boolean manual) {
+    private void enrollAudioAuto(long userId, byte[] pcm) {
         if (mVoiceprint == null || pcm == null || pcm.length < PcmTimeline.BYTES_PER_SEC * 3) {
             return;
         }
         User user = mDb.userDao().get(userId);
-        if (user == null || (!manual
-                && VoiceprintLibrary.parseFeatureIds(user.featureIds).size() >= AUTO_ENROLL_FEATURE_CAP)) {
+        if (user == null
+                || VoiceprintLibrary.parseFeatureIds(user.featureIds).size() >= AUTO_ENROLL_FEATURE_CAP) {
             return;
         }
         mVoiceprint.enroll(userId, user.name, user.isOwner, pcm, (featureId, err) -> proc(() -> {
@@ -1202,10 +1184,37 @@ public class RecordingService extends Service implements ConversationManager.Lis
                 Log.w(TAG, "auto enroll failed: " + err);
                 return;
             }
-            User u = mDb.userDao().get(userId);
-            if (u != null) {
-                u.featureIds = VoiceprintLibrary.appendFeatureId(u.featureIds, featureId);
-                mDb.userDao().update(u);
+            synchronized (ServiceState.class) {
+                User u = mDb.userDao().get(userId);
+                if (u != null) {
+                    u.featureIds = VoiceprintLibrary.appendFeatureId(u.featureIds, featureId);
+                    mDb.userDao().update(u);
+                }
+            }
+        }));
+    }
+
+    private void enrollAudioToUser(long userId, byte[] pcm, java.util.function.BooleanSupplier valid) {
+        if (!valid.getAsBoolean()) return;
+        if (mVoiceprint == null || pcm == null || pcm.length < PcmTimeline.BYTES_PER_SEC * 3) {
+            return;
+        }
+        User user = mDb.userDao().get(userId);
+        if (user == null) {
+            return;
+        }
+        mVoiceprint.enroll(userId, user.name, user.isOwner, pcm, (featureId, err) -> proc(() -> {
+            if (err != null || featureId == null) {
+                Log.w(TAG, "manual enroll failed: " + err);
+                return;
+            }
+            synchronized (ServiceState.class) {
+                if (!valid.getAsBoolean()) return;
+                User u = mDb.userDao().get(userId);
+                if (u != null) {
+                    u.featureIds = VoiceprintLibrary.appendFeatureId(u.featureIds, featureId);
+                    mDb.userDao().update(u);
+                }
             }
         }));
     }
@@ -1221,13 +1230,13 @@ public class RecordingService extends Service implements ConversationManager.Lis
         }
     }
 
-    private void saveUtterance(Long userId, String text, long startMs, long endMs) {
+    private long saveUtterance(Long userId, String text, long startMs, long endMs) {
         Utterance u = new Utterance();
         u.userId = userId;
         u.text = text;
         u.startTime = startMs;
         u.endTime = endMs;
-        mDb.utteranceDao().insert(u);
+        return mDb.utteranceDao().insert(u);
     }
 
     // ---------------------------------------------------------------- 会话回调（处理线程）
@@ -1243,19 +1252,17 @@ public class RecordingService extends Service implements ConversationManager.Lis
         int color = info.color;
         mMain.post(() -> {
             // 在本应用里：全屏变暗弹出全部卡片；不在本应用里（或悬浮窗弹不出来）：灵动岛中卡。
+            // 眼镜不再跟着会话提醒推：新提取的事项已经即时推过“新增”页，这里再推同一个人
+            // 的全部未完成事项会把同一批内容在镜片上显示两遍。
             if (!uiVisible || !mOverlay.show(userId, info.name, facts)) {
                 mLive.showReminder(userId, info.name, color, facts);
             }
         });
-        // 眼镜已连接时额外推一份到 Even G2 镜片上（渲染和发送在眼镜的工作线程上进行）。
-        if (GlassesManager.isReady()) {
-            GlassesManager.show(info.name, facts);
-        }
     }
 
     @Override
     public void onConversationSegment(long userId, long startMs, long endMs) {
-        mExtraction.enqueue(userId, startMs, endMs);
+        // Sentence finalization owns extraction; session callbacks only maintain reminders.
     }
 
     /** 从灵动岛提醒点“查看”回到应用后调用：全屏弹出这个人的全部卡片。 */

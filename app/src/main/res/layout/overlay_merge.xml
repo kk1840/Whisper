@@ -74,7 +74,7 @@
             android:layout_marginTop="20dp"
             android:text="@string/merge_action"
             android:textSize="16sp"
-            app:cornerRadius="22dp"
+            app:cornerRadius="@dimen/corner_m"
             app:iconGravity="textStart" />
 
         <com.google.android.material.button.MaterialButton

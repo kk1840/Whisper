@@ -66,7 +66,7 @@ public final class Settings {
         prefs(context).edit().putBoolean(KEY_SCREENSHOT_WATCH, enabled).apply();
     }
 
-    /** 是否读取微信通知提取待办（监听器侧的开关；系统通知权限另见 NotificationAccessHelper）。 */
+    /** 是否读取通知提取待办（监听器侧的开关；系统通知权限另见 NotificationAccessHelper）。 */
     public static boolean isNotificationWatchEnabled(Context context) {
         return prefs(context).getBoolean(KEY_NOTIFICATION_WATCH, true);
     }
@@ -75,7 +75,7 @@ public final class Settings {
         prefs(context).edit().putBoolean(KEY_NOTIFICATION_WATCH, enabled).apply();
     }
 
-    /** 调试：监听所有应用的通知（不只微信），方便没有微信在手时测试整条链路。 */
+    /** 调试：监听所有应用的通知（默认关闭，仍排除自身与系统噪声）。 */
     public static boolean isNotificationDebugAllApps(Context context) {
         return prefs(context).getBoolean(KEY_NOTIFICATION_DEBUG_ALL_APPS, false);
     }
@@ -93,9 +93,9 @@ public final class Settings {
         prefs(context).edit().putLong(KEY_LAST_SCREENSHOT_ID, id).apply();
     }
 
-    // ---------------------------------------------------------------- Even G2 眼镜
+    // ---------------------------------------------------------------- 智能眼镜
 
-    /** 是否把熟人事项推送到 Even G2 眼镜。 */
+    /** 是否把熟人事项推送到智能眼镜。 */
     public static boolean isGlassesPushEnabled(Context context) {
         return prefs(context).getBoolean(KEY_GLASSES_PUSH, true);
     }

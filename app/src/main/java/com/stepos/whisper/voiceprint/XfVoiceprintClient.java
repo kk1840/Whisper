@@ -57,7 +57,7 @@ public class XfVoiceprintClient {
     public static class Score {
         public String featureId;
         public String featureInfo;
-        public float score;
+        public float score = Float.NaN;
     }
 
     /** 1:N 检索结果，按分数降序。 */
@@ -95,7 +95,7 @@ public class XfVoiceprintClient {
         return !mAppId.isEmpty() && !mApiKey.isEmpty() && !mApiSecret.isEmpty();
     }
 
-    /** 创建声纹分组。分组已存在时讯飞会报错，调用方把它当作成功处理。 */
+    /** 创建声纹分组；业务错误原样交给调用方，不推断为“已存在”。 */
     public void createGroup(String groupId, String groupName) throws IOException {
         JsonObject params = new JsonObject();
         params.addProperty("groupId", groupId);
@@ -145,16 +145,42 @@ public class XfVoiceprintClient {
         params.addProperty("groupId", groupId);
         params.addProperty("topK", Math.max(1, Math.min(10, topK)));
         JsonElement decoded = call("searchFea", params, pcm16k, "searchFeaRes");
-        SearchResult result = new SearchResult();
-        if (decoded.isJsonObject() && decoded.getAsJsonObject().has("scoreList")) {
-            for (JsonElement e : decoded.getAsJsonObject().getAsJsonArray("scoreList")) {
-                Score s = mGson.fromJson(e, Score.class);
-                if (s != null && s.featureId != null) {
-                    result.scores.add(s);
-                }
+        return parseSearchResult(decoded);
+    }
+
+    static SearchResult parseSearchResult(JsonElement decoded) throws IOException {
+        try {
+            if (decoded == null || !decoded.isJsonObject()
+                    || !decoded.getAsJsonObject().has("scoreList")
+                    || !decoded.getAsJsonObject().get("scoreList").isJsonArray()) {
+                throw new IOException("missing voiceprint scoreList");
             }
+            SearchResult result = new SearchResult();
+            for (JsonElement e : decoded.getAsJsonObject().getAsJsonArray("scoreList")) {
+                if (!e.isJsonObject()) {
+                    throw new IOException("invalid voiceprint candidate");
+                }
+                JsonObject candidate = e.getAsJsonObject();
+                if (!candidate.has("featureId") || candidate.get("featureId").isJsonNull()
+                        || !candidate.has("score") || candidate.get("score").isJsonNull()) {
+                    throw new IOException("missing voiceprint candidate fields");
+                }
+                Score s = new Score();
+                s.featureId = candidate.get("featureId").getAsString();
+                s.score = candidate.get("score").getAsFloat();
+                if (candidate.has("featureInfo") && !candidate.get("featureInfo").isJsonNull()) {
+                    s.featureInfo = candidate.get("featureInfo").getAsString();
+                }
+                if (s.featureId.isEmpty() || !Float.isFinite(s.score)) {
+                    throw new IOException("invalid voiceprint candidate fields");
+                }
+                result.scores.add(s);
+            }
+            result.scores.sort((a, b) -> Float.compare(b.score, a.score));
+            return result;
+        } catch (RuntimeException e) {
+            throw new IOException("invalid voiceprint search response", e);
         }
-        return result;
     }
 
     // ---------------------------------------------------------------- 内部实现

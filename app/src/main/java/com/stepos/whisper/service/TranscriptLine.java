@@ -17,9 +17,27 @@ public class TranscriptLine {
     public final int color;
     /** {@link Utterance#AI_NONE} / {@link Utterance#AI_QUEUED} / {@link Utterance#AI_DONE} */
     public final int aiState;
+    /** 通知任务独立于语音行 id；语音为 -1。 */
+    public final long notificationJobId;
+    public final boolean aliasPending;
+
+    public boolean isNotification() {
+        return notificationJobId > 0;
+    }
+
+    public static TranscriptLine notification(long jobId, long timeMs, String speaker, String text,
+                                              long userId, int color, int aiState, boolean aliasPending) {
+        return new TranscriptLine(-jobId, timeMs, timeMs, speaker, text, userId, color,
+                aiState, jobId, aliasPending);
+    }
 
     public TranscriptLine(long id, long timeMs, long endMs, String speaker, String text, long userId, int color,
                           int aiState) {
+        this(id, timeMs, endMs, speaker, text, userId, color, aiState, -1, false);
+    }
+
+    private TranscriptLine(long id, long timeMs, long endMs, String speaker, String text, long userId, int color,
+                           int aiState, long notificationJobId, boolean aliasPending) {
         this.id = id;
         this.timeMs = timeMs;
         this.endMs = endMs;
@@ -28,13 +46,17 @@ public class TranscriptLine {
         this.userId = userId;
         this.color = color;
         this.aiState = aiState;
+        this.notificationJobId = notificationJobId;
+        this.aliasPending = aliasPending;
     }
 
     public TranscriptLine withSpeaker(String newSpeaker, long newUserId, int newColor) {
-        return new TranscriptLine(id, timeMs, endMs, newSpeaker, text, newUserId, newColor, aiState);
+        return new TranscriptLine(id, timeMs, endMs, newSpeaker, text, newUserId, newColor, aiState,
+                notificationJobId, aliasPending);
     }
 
     public TranscriptLine withAiState(int state) {
-        return new TranscriptLine(id, timeMs, endMs, speaker, text, userId, color, state);
+        return new TranscriptLine(id, timeMs, endMs, speaker, text, userId, color, state,
+                notificationJobId, aliasPending);
     }
 }

@@ -12,30 +12,23 @@ import com.stepos.whisper.data.FactCard
 /**
  * 应用级单例：持有唯一的 [G2Connection]，录音服务和配对界面操作的是同一条连接。
  * 负责把事项渲染成图片推到眼镜，并在 [PAGE_TIMEOUT_MS] 后自动关掉页面。
+ * 只显示第一页（一屏放不下的内容不翻页），同一条内容不重复推送。
  */
 object GlassesManager {
     private const val TAG = "G2"
     /** 推送的页面在眼镜上停留多久。 */
-    private const val PAGE_TIMEOUT_MS = 60_000L
+    private const val PAGE_TIMEOUT_MS = 20_000L
 
     @Volatile private var connection: G2Connection? = null
     private val main = Handler(Looper.getMainLooper())
-    private var dismissRunnable: Runnable? = null
-    private const val PAGE_INTERVAL_MS = 8_000L
     private val generation = AtomicLong()
-    private var turnPage: Runnable? = null
-    private var activePages: List<FactsRenderer.Page> = emptyList()
-    private var activeIndex = 0
-    private var pagesShown = 0
-    private var visibleMs = 0L
+    private var dismissRunnable: Runnable? = null
 
-    private fun cancelRotation(): Long {
+    /** 使上一页的自动关页失效，返回本次推送的代际令牌。 */
+    private fun cancelShow(): Long {
         val token = generation.incrementAndGet()
         main.post {
             if (generation.get() == token) {
-                turnPage?.let { main.removeCallbacks(it) }
-                turnPage = null
-                activePages = emptyList()
                 dismissRunnable?.let { main.removeCallbacks(it) }
                 dismissRunnable = null
             }
@@ -75,35 +68,33 @@ object GlassesManager {
     fun applyEnabled(context: Context) {
         init(context)
         if (Settings.isGlassesPushEnabled(context)) conn().start() else {
-            cancelRotation()
+            cancelShow()
             conn().stop()
         }
     }
 
     @JvmStatic fun scanNow() = conn().scanNow()
-    @JvmStatic fun disconnect() { cancelRotation(); conn().disconnect() }
-    @JvmStatic fun forget() { cancelRotation(); conn().forget() }
+    @JvmStatic fun disconnect() { cancelShow(); conn().disconnect() }
+    @JvmStatic fun forget() { cancelShow(); conn().forget() }
     @JvmStatic fun assignSide(address: String, side: Side) = conn().assignSide(address, side)
 
     /**
-     * 把 [name] 的待办和事实推到眼镜上。眼镜没连好就直接返回 false；
-     * 推送在 BLE 工作线程上异步进行，结果回调在主线程。
+     * 把 [name] 的待办和事实推到眼镜上，只推第一页、停留 [PAGE_TIMEOUT_MS]。
+     * 眼镜没连好就直接返回 false；推送在 BLE 工作线程上异步进行，结果回调在主线程。
      */
     @JvmStatic
     @JvmOverloads
     fun show(name: String, cards: List<FactCard>, onResult: ((Boolean) -> Unit)? = null, isNew: Boolean = false): Boolean {
         val c = connection ?: return false
         if (!c.isReady || cards.isEmpty()) return false
-        val token = cancelRotation()
+        val token = cancelShow()
         c.execute {
-            var pages: List<FactsRenderer.Page> = emptyList()
             val ok = runCatching {
                 if (generation.get() != token) return@runCatching false
-                pages = FactsRenderer.pages(name, cards, newItems = isNew)
-                sendPage(c, pages.first(), token)
+                sendPage(c, FactsRenderer.pages(name, cards, newItems = isNew).first(), token)
             }.onFailure { Log.e(TAG, "show failed", it) }.getOrDefault(false)
             main.post {
-                if (generation.get() == token) beginRotation(c, pages, token, ok)
+                if (ok && generation.get() == token) scheduleDismiss(token)
                 onResult?.invoke(ok && generation.get() == token)
             }
         }
@@ -123,17 +114,15 @@ object GlassesManager {
             onResult(false, null)
             return
         }
-        val token = cancelRotation()
+        val token = cancelShow()
         c.execute {
             var err: String? = null
-            var pages: List<FactsRenderer.Page> = emptyList()
             val ok = runCatching {
                 if (generation.get() != token) return@runCatching false
-                pages = FactsRenderer.samplePages()
-                sendPage(c, pages.first(), token)
+                sendPage(c, FactsRenderer.samplePages().first(), token)
             }.onFailure { Log.e(TAG, "pushTest failed", it); err = it.message }.getOrDefault(false)
             main.post {
-                if (generation.get() == token) beginRotation(c, pages, token, ok)
+                if (ok && generation.get() == token) scheduleDismiss(token)
                 onResult(ok && generation.get() == token, err)
             }
         }
@@ -142,7 +131,7 @@ object GlassesManager {
     /** 立即关掉眼镜上的页面。 */
     @JvmStatic
     fun dismiss() {
-        val token = cancelRotation()
+        val token = cancelShow()
         val c = connection ?: return
         c.execute {
             if (generation.get() == token) {
@@ -151,46 +140,15 @@ object GlassesManager {
         }
     }
 
+    private fun scheduleDismiss(token: Long) {
+        val timeout = Runnable { if (generation.get() == token) dismiss() }
+        dismissRunnable = timeout
+        main.postDelayed(timeout, PAGE_TIMEOUT_MS)
+    }
+
     private fun sendPage(c: G2Connection, page: FactsRenderer.Page, token: Long): Boolean {
         if (generation.get() != token || !c.isReady) return false
         val bitmap = page.render()
         return try { c.showPage(bitmap) } finally { bitmap.recycle() }
-    }
-
-    private fun beginRotation(c: G2Connection, pages: List<FactsRenderer.Page>, token: Long, ok: Boolean) {
-        if (!ok) { dismiss(); return }
-        activePages = pages
-        activeIndex = 0
-        pagesShown = 1
-        visibleMs = 0
-        if (pages.size == 1) {
-            val timeout = Runnable { if (generation.get() == token) dismiss() }
-            dismissRunnable = timeout
-            main.postDelayed(timeout, PAGE_TIMEOUT_MS)
-        } else scheduleNext(c, token)
-    }
-
-    private fun scheduleNext(c: G2Connection, token: Long) {
-        val next = Runnable {
-            if (generation.get() != token) return@Runnable
-            visibleMs += PAGE_INTERVAL_MS
-            if (pagesShown >= activePages.size && visibleMs >= PAGE_TIMEOUT_MS) {
-                dismiss()
-                return@Runnable
-            }
-            activeIndex = (activeIndex + 1) % activePages.size
-            val page = activePages[activeIndex]
-            c.execute {
-                val ok = runCatching { sendPage(c, page, token) }
-                    .onFailure { Log.e(TAG, "turn page failed", it) }.getOrDefault(false)
-                main.post {
-                    if (generation.get() == token) {
-                        if (ok) { pagesShown++; scheduleNext(c, token) } else dismiss()
-                    }
-                }
-            }
-        }
-        turnPage = next
-        main.postDelayed(next, PAGE_INTERVAL_MS)
     }
 }

@@ -39,7 +39,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * Even G2 双镜腿 BLE 连接管理。
+ * 智能眼镜（Even G2）双镜腿 BLE 连接管理。
  *
  * 线程模型：
  *  - ble 线程（[h]）：状态机——扫描、连接、GATT 映射、重连退避、心跳定时。GATT 回调都转到这里，
@@ -962,22 +962,16 @@ class G2Connection(context: Context) {
         return true
     }
 
-    /** 滑动窗口流式推一块瓦片；连续 >3 次没 ack 视为固件卡死。 */
+    /** 每个分片都确认成功后才允许缓存瓦片，避免局部缺图被当作已显示。 */
     private fun streamTile(c: EvenHub.ImageContainer, bmp: ByteArray, e: Int): Boolean {
         val sid = nextSession()
         val inFlight = ArrayDeque<AckBox>()
-        var consecMiss = 0
+        var allConfirmed = true
 
         fun drainOne(): Boolean {
             val box = inFlight.removeFirst()
-            val r = box.await(1000)
-            if (r == EvenHub.Result.IMAGE_OK) {
-                consecMiss = 0
-            } else {
-                consecMiss++
-                if (consecMiss > 3) return false
-            }
-            return true
+            if (box.await(1000) != EvenHub.Result.IMAGE_OK) allConfirmed = false
+            return e == epoch
         }
 
         var idx = 0
@@ -996,7 +990,7 @@ class G2Connection(context: Context) {
         while (inFlight.isNotEmpty()) {
             if (!drainOne()) return false
         }
-        return true
+        return allConfirmed
     }
 
     private fun streamTiles(tiles: List<Bmp4.Tile>, e: Int): Boolean {

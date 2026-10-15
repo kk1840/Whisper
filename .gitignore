@@ -16,3 +16,8 @@
 local.properties
 /device-models
 __pycache__/
+
+# 本地工具目录（回归日志/会话状态），不入库
+/.stepcode/
+/.workbuddy/
+/.zcode/

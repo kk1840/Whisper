@@ -105,7 +105,7 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
-        <!-- 读取微信通知 -->
+        <!-- 读取通知 -->
         <LinearLayout
             android:id="@+id/row_notification"
             android:layout_width="match_parent"
@@ -186,7 +186,7 @@
                 android:src="@drawable/ic_chevron" />
         </LinearLayout>
 
-        <!-- Even G2 眼镜 -->
+        <!-- 智能眼镜 -->
         <LinearLayout
             android:id="@+id/row_glasses"
             android:layout_width="match_parent"
@@ -241,42 +241,6 @@
             android:text="@string/sheet_section_actions"
             android:textAppearance="?attr/textAppearanceTitleSmall"
             android:textColor="@color/partial_text" />
-
-        <!-- 立即让 AI 识别 -->
-        <LinearLayout
-            android:id="@+id/row_extract"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_row"
-            android:gravity="center_vertical"
-            android:minHeight="@dimen/row_min_height"
-            android:orientation="horizontal"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_ai_sync" />
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    style="@style/Widget.Whisper.RowTitle"
-                    android:text="@string/action_extract_all" />
-
-                <TextView
-                    android:id="@+id/extract_value"
-                    style="@style/Widget.Whisper.RowSubtitle"
-                    android:text="@string/action_extract_all_hint" />
-            </LinearLayout>
-        </LinearLayout>
 
         <!-- 用户管理 -->
         <LinearLayout

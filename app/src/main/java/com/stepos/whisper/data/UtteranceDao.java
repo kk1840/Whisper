@@ -32,6 +32,24 @@ public interface UtteranceDao {
     @Query("SELECT * FROM utterances WHERE endTime >= :from AND startTime <= :to ORDER BY startTime")
     List<Utterance> getRange(long from, long to);
 
+    @Query("SELECT * FROM utterances WHERE startTime = :start AND endTime = :end ORDER BY id")
+    List<Utterance> getExact(long start, long end);
+
+    @Query("SELECT * FROM utterances WHERE id IN (:ids) ORDER BY startTime, id")
+    List<Utterance> getByIds(List<Long> ids);
+
+    @Query("UPDATE utterances SET aiState = :state WHERE id IN (:ids) AND aiState < :state")
+    void raiseAiStateByIds(List<Long> ids, int state);
+
+    @Query("UPDATE utterances SET aiState = 0 WHERE id IN (:ids) AND aiState = 1")
+    void resetQueuedByIds(List<Long> ids);
+
+    @Query("SELECT * FROM utterances WHERE aiState < 2 ORDER BY startTime, id")
+    List<Utterance> getUnfinished();
+
+    @Query("SELECT * FROM utterances WHERE startTime >= :from AND startTime < :before ORDER BY startTime, id")
+    List<Utterance> getPreviousContext(long from, long before);
+
     @Query("SELECT * FROM utterances WHERE userId = :userId ORDER BY startTime DESC LIMIT :limit")
     LiveData<List<Utterance>> observeRecent(long userId, int limit);
 

@@ -42,13 +42,15 @@ class TranscriptAdapter extends ListAdapter<TranscriptLine, TranscriptAdapter.Ho
         super(new DiffUtil.ItemCallback<TranscriptLine>() {
             @Override
             public boolean areItemsTheSame(@NonNull TranscriptLine a, @NonNull TranscriptLine b) {
-                return a.id == b.id;
+                return a.isNotification() == b.isNotification() && (a.isNotification()
+                        ? a.notificationJobId == b.notificationJobId : a.id == b.id);
             }
 
             @Override
             public boolean areContentsTheSame(@NonNull TranscriptLine a, @NonNull TranscriptLine b) {
                 return a.speaker.equals(b.speaker) && a.text.equals(b.text) && a.color == b.color
-                        && a.aiState == b.aiState && a.userId == b.userId;
+                        && a.aiState == b.aiState && a.userId == b.userId
+                        && a.aliasPending == b.aliasPending && a.timeMs == b.timeMs;
             }
         });
         mListener = listener;
@@ -66,6 +68,14 @@ class TranscriptAdapter extends ListAdapter<TranscriptLine, TranscriptAdapter.Ho
     public void onBindViewHolder(@NonNull Holder holder, int position) {
         TranscriptLine line = getItem(position);
         ItemTranscriptBinding b = holder.binding;
+        holder.itemView.setBackgroundResource(line.isNotification()
+                ? R.drawable.bg_notification_card : R.drawable.bg_row);
+        holder.itemView.setBackgroundTintList(null);
+        int padding = Math.round((line.isNotification() ? 12 : 6)
+                * holder.itemView.getResources().getDisplayMetrics().density);
+        holder.itemView.setPadding(padding, padding, padding, padding);
+        b.notificationType.setVisibility(line.isNotification() ? View.VISIBLE : View.GONE);
+        b.aliasPending.setVisibility(line.isNotification() && line.aliasPending ? View.VISIBLE : View.GONE);
         b.speaker.setText(line.speaker);
         b.speaker.setTextColor(line.color);
         b.bar.setBackgroundTintList(ColorStateList.valueOf(line.color));
@@ -85,16 +95,20 @@ class TranscriptAdapter extends ListAdapter<TranscriptLine, TranscriptAdapter.Ho
             b.ai.setBackgroundTintList(ColorStateList.valueOf(AI_QUEUED_BG));
         } else {
             b.ai.setVisibility(View.GONE);
+            b.ai.setText("");
+            b.ai.setTextColor(AI_QUEUED_COLOR);
+            b.ai.setBackgroundTintList(null);
         }
 
         holder.itemView.setOnClickListener(v -> mListener.onSpeakerClick(line));
-        holder.itemView.setOnLongClickListener(v -> {
+        holder.itemView.setOnLongClickListener(line.isNotification() ? null : v -> {
             if (mLongListener == null) {
                 return false;
             }
             mLongListener.onSpeakerLongClick(line);
             return true;
         });
+        holder.itemView.setLongClickable(!line.isNotification() && mLongListener != null);
     }
 
     static class Holder extends RecyclerView.ViewHolder {
