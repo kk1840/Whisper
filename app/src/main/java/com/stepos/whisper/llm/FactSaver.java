@@ -158,7 +158,8 @@ public final class FactSaver {
             return null;
         }
         String t = s.trim();
-        return t.isEmpty() || "null".equalsIgnoreCase(t) || "无".equals(t) ? null : t;
+        return t.isEmpty() || "null".equalsIgnoreCase(t) || "无".equals(t)
+                || t.matches("\\[\\s*\\]") ? null : t;
     }
 
     private static String normalizeTodoType(String type) {

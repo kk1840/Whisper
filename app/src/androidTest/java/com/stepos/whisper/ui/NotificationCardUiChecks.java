@@ -13,6 +13,8 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import com.stepos.whisper.notification.NotificationSource;
+import android.view.ViewGroup;
 import com.stepos.whisper.R;
 import com.stepos.whisper.data.Utterance;
 import com.stepos.whisper.service.TranscriptLine;
@@ -57,18 +59,23 @@ public final class NotificationCardUiChecks {
         FrameLayout parent = new FrameLayout(context);
         TranscriptLine queued = TranscriptLine.notification(901, 0, "Synthetic sender",
                 "Synthetic notification: meet tomorrow.", TranscriptLine.NO_USER,
-                TranscriptLine.COLOR_UNKNOWN, Utterance.AI_QUEUED, true);
+                TranscriptLine.COLOR_UNKNOWN, Utterance.AI_QUEUED, true, NotificationSource.WECHAT);
         TranscriptLine done = TranscriptLine.notification(902, 1000, "Synthetic resolved sender",
                 "Synthetic notification: meeting confirmed.", 7, 0xFF1565C0,
-                Utterance.AI_DONE, false);
+                Utterance.AI_DONE, false, NotificationSource.FEISHU);
         TranscriptLine voice = new TranscriptLine(903, 2000, 3000, "Synthetic voice speaker",
                 "Synthetic voice: bring a notebook.", 8, 0xFF6A1B9A, Utterance.AI_NONE);
         AtomicReference<TranscriptLine> clicked = new AtomicReference<>();
         AtomicReference<TranscriptLine> longClicked = new AtomicReference<>();
         TranscriptAdapter adapter = new TranscriptAdapter(clicked::set, longClicked::set);
         // ListAdapter's initial list is installed synchronously; no background diff is needed.
-        adapter.submitList(Arrays.asList(queued, done, voice));
-        require(adapter.getItemCount() == 3, "three synthetic rows installed");
+        TranscriptLine demo = TranscriptLine.notification(904, 1000, "离线演示联系人很长的姓名",
+                "Synthetic demo notification with [brackets].", 7, 0xFF1565C0,
+                Utterance.AI_DONE, false, NotificationSource.DEMO);
+        TranscriptLine unknown = TranscriptLine.notification(905, 1000, "旧任务",
+                "Synthetic legacy notification", 7, 0xFF1565C0, Utterance.AI_DONE, false);
+        adapter.submitList(Arrays.asList(queued, done, voice, demo, unknown));
+        require(adapter.getItemCount() == 5, "five synthetic rows installed");
         TranscriptAdapter.Holder holder = adapter.onCreateViewHolder(parent, 0);
         parent.addView(holder.itemView);
         adapter.onBindViewHolder(holder, 0);
@@ -109,6 +116,10 @@ public final class NotificationCardUiChecks {
         require(!holder.itemView.isLongClickable() && !holder.itemView.performLongClick()
                 && longClicked.get() == null, "notification reuse removes the voice listener");
         checkBackground(holder.itemView, true);
+        adapter.onBindViewHolder(holder, 3);
+        checkNotification(holder, demo, context, R.string.ai_mark_done);
+        adapter.onBindViewHolder(holder, 4);
+        checkNotification(holder, unknown, context, R.string.ai_mark_done);
         return renderPreview(parent, adapter);
     }
 
@@ -118,7 +129,7 @@ public final class NotificationCardUiChecks {
         text(holder.binding.text, line.text, "notification body is not a placeholder");
         require(holder.binding.notificationType.getVisibility() == View.VISIBLE,
                 "notification type label visible");
-        text(holder.binding.notificationType, context.getString(R.string.transcript_notification),
+        text(holder.binding.notificationType, context.getString(NotificationSource.label(line.notificationPackage)),
                 "notification type label");
         require(holder.binding.ai.getVisibility() == View.VISIBLE, "AI state visible");
         text(holder.binding.ai, context.getString(aiLabel), "AI state text");
@@ -135,6 +146,10 @@ public final class NotificationCardUiChecks {
         require(row.getPaddingLeft() == padding && row.getPaddingTop() == padding
                 && row.getPaddingRight() == padding && row.getPaddingBottom() == padding,
                 "recycled row padding");
+        ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) row.getLayoutParams();
+        int margin = notification ? Math.round(4 * density) : 0;
+        require(margins.topMargin == margin && margins.bottomMargin == margin,
+                "production margins reset on voice reuse");
         require(row.getBackgroundTintList() == null, "row has no stale background tint");
         Drawable background = row.getBackground();
         require(background instanceof RippleDrawable, "row uses the expected ripple drawable");
@@ -162,7 +177,8 @@ public final class NotificationCardUiChecks {
 
     private static Bitmap renderPreview(FrameLayout parent, TranscriptAdapter adapter) {
         float density = parent.getResources().getDisplayMetrics().density;
-        int width = Math.round(480 * density);
+        parent.removeAllViews();
+        int width = Math.round(360 * density);
         int gap = Math.round(12 * density);
         int height = gap;
         for (int i = 0; i < adapter.getItemCount(); i++) {
@@ -171,12 +187,15 @@ public final class NotificationCardUiChecks {
             View row = holder.itemView;
             row.measure(View.MeasureSpec.makeMeasureSpec(width - 2 * gap, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            ViewGroup.MarginLayoutParams bound = (ViewGroup.MarginLayoutParams) row.getLayoutParams();
+            int topMargin = bound.topMargin;
+            int bottomMargin = bound.bottomMargin;
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width - 2 * gap,
                     row.getMeasuredHeight());
             params.leftMargin = gap;
-            params.topMargin = height;
+            params.topMargin = height + topMargin;
             parent.addView(row, params);
-            height += row.getMeasuredHeight() + gap;
+            height += topMargin + row.getMeasuredHeight() + bottomMargin;
         }
         parent.setBackgroundColor(parent.getResources().getColor(R.color.main_bg, parent.getContext().getTheme()));
         parent.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),

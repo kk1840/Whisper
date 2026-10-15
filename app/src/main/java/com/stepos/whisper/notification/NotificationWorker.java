@@ -114,15 +114,24 @@ public class NotificationWorker implements AliasWorker {
 
     /** 一条微信消息入队（任意线程，监听器防抖后调用）。 */
     public void enqueue(String sender, String text, long postTime) {
+        enqueue(sender, text, postTime, null);
+    }
+
+    public void enqueue(String sender, String text, long postTime, String packageName) {
         AppDatabase.IO.execute(() -> {
-            insertJob(mDb, sender, text, postTime);
+            insertJob(mDb, sender, text, postTime, packageName);
             retryPending();
         });
     }
 
     /** 先落库并立即发布会话行；录音服务不在时同样可用。数据库线程调用。 */
     public static void insertJob(AppDatabase db, String sender, String text, long postTime) {
+        insertJob(db, sender, text, postTime, null);
+    }
+
+    public static void insertJob(AppDatabase db, String sender, String text, long postTime, String packageName) {
         NotificationJob job = new NotificationJob();
+        job.packageName = packageName;
         job.sender = sender;
         job.text = text;
         job.postTime = postTime;
@@ -254,7 +263,8 @@ public class NotificationWorker implements AliasWorker {
             return false;
         }
         String who = user.isOwner ? OWNER_WHO : user.name;
-        StringBuilder transcript = new StringBuilder("微信消息时间：")
+        StringBuilder transcript = new StringBuilder(mContext.getString(NotificationSource.label(job.packageName)))
+                .append("消息时间：")
                 .append(mTimeFormat.format(new Date(job.postTime))).append('\n');
         for (String line : job.text.split("\n")) {
             if (!line.isEmpty()) {

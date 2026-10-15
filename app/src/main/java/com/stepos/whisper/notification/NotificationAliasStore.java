@@ -146,6 +146,6 @@ public final class NotificationAliasStore implements AliasWorker {
                 user == null ? job.sender : user.name, job.text,
                 user == null ? TranscriptLine.NO_USER : user.id,
                 user == null ? TranscriptLine.COLOR_UNKNOWN : UserColors.orDefault(user.color, user.id),
-                aiState, alias == null);
+                aiState, alias == null, job.packageName);
     }
 }

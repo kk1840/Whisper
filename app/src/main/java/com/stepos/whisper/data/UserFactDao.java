@@ -15,7 +15,7 @@ public interface UserFactDao {
     @Insert
     long insert(UserFact fact);
 
-    @Query("SELECT * FROM user_facts WHERE userId = :userId AND done = 0 ORDER BY createdAt DESC")
+    @Query("SELECT * FROM user_facts WHERE userId = :userId AND done = 0 ORDER BY createdAt DESC, id DESC")
     List<UserFact> getPending(long userId);
 
     @Query("SELECT * FROM user_facts WHERE userId = :userId ORDER BY done, kind, createdAt DESC")
@@ -23,13 +23,14 @@ public interface UserFactDao {
 
     /** 所有人未完成的待办和仍成立的事实，主界面再按类别分开显示。 */
     @Query("SELECT f.*, u.name AS userName, u.color AS userColor FROM user_facts f "
-            + "JOIN users u ON u.id = f.userId WHERE f.done = 0 ORDER BY f.createdAt DESC")
+            + "JOIN users u ON u.id = f.userId WHERE f.done = 0 ORDER BY f.kind, "
+            + "CASE WHEN f.kind = 0 THEN f.updatedAt ELSE f.createdAt END DESC, f.createdAt DESC, f.id DESC")
     LiveData<List<FactCard>> observePendingCards();
 
     /** 某人未完成的待办在前，仍成立的事实在后。 */
     @Query("SELECT f.*, u.name AS userName, u.color AS userColor FROM user_facts f "
             + "JOIN users u ON u.id = f.userId WHERE f.done = 0 AND f.userId = :userId "
-            + "ORDER BY f.kind, f.createdAt DESC")
+            + "ORDER BY f.kind, CASE WHEN f.kind = 0 THEN f.updatedAt ELSE f.createdAt END DESC, f.createdAt DESC, f.id DESC")
     List<FactCard> getPendingCards(long userId);
 
     @Query("UPDATE user_facts SET done = :done, updatedAt = :time WHERE id = :id")

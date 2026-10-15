@@ -14,7 +14,7 @@ import java.util.concurrent.Executors;
 
 @Database(entities = {User.class, Utterance.class, UserFact.class, PendingExtraction.class, ChatAlias.class,
         ScreenshotJob.class, NotificationJob.class},
-        version = 9)
+        version = 10)
 public abstract class AppDatabase extends RoomDatabase {
     /** 界面发起的数据库写操作统一在这里执行。 */
     public static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r, "db-io"));
@@ -113,6 +113,13 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    static final Migration MIGRATION_9_10 = new Migration(9, 10) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("ALTER TABLE notification_jobs ADD COLUMN packageName TEXT");
+        }
+    };
+
     public static AppDatabase get(Context context) {
         if (sInstance == null) {
             synchronized (AppDatabase.class) {
@@ -120,7 +127,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     sInstance = Room.databaseBuilder(context.getApplicationContext(),
                                     AppDatabase.class, "whisper.db")
                             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                             .build();
                 }
             }

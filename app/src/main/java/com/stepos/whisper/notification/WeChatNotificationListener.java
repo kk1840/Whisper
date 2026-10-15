@@ -30,8 +30,6 @@ import java.util.Set;
  */
 public class WeChatNotificationListener extends NotificationListenerService {
     private static final String TAG = "WeChatListener";
-    private static final String WECHAT_PACKAGE = "com.tencent.mm";
-    private static final String DEMO_PACKAGE = "com.stepos.whisper.notificationdemo";
     /** 同一发送者的相同文本在这么长时间内重复出现（通知被系统重发）不再处理。 */
     private static final long DEDUP_MS = 10 * 60_000;
     /** 群聊回退启发式：文本形如“昵称：内容”，前缀超过这个字数不当群聊拆。 */
@@ -92,12 +90,12 @@ public class WeChatNotificationListener extends NotificationListenerService {
         RecordingService service = RecordingService.getInstance();
         NotificationWorker worker = service == null ? null : service.getNotifications();
         if (worker != null) {
-            worker.enqueue(sender, text, sbn.getPostTime());
+            worker.enqueue(sender, text, sbn.getPostTime(), sbn.getPackageName());
         } else {
             // 录音服务被停：落库即发布通知行；服务起来后恢复同一任务继续处理。
             AppDatabase db = AppDatabase.get(this);
             AppDatabase.IO.execute(() -> NotificationWorker.insertJob(db, sender, text,
-                    sbn.getPostTime()));
+                    sbn.getPostTime(), sbn.getPackageName()));
         }
     }
 
@@ -112,14 +110,14 @@ public class WeChatNotificationListener extends NotificationListenerService {
     }
 
     /**
-     * 默认只处理微信与独立通知演示包；调试 all 模式需显式开启。
+     * 默认只处理微信、飞书与独立通知演示包；调试 all 模式需显式开启。
      * 本应用自己的通知永远不处理，避免提醒再次喂给自己；系统 UI 同理。
      */
     private boolean acceptPackage(String pkg) {
         if (pkg == null || getPackageName().equals(pkg) || BLOCKED_PACKAGES.contains(pkg)) {
             return false;
         }
-        if (WECHAT_PACKAGE.equals(pkg) || DEMO_PACKAGE.equals(pkg)) {
+        if (NotificationSource.isSupported(pkg)) {
             return true;
         }
         return BuildConfig.DEBUG && Settings.isNotificationDebugAllApps(this);

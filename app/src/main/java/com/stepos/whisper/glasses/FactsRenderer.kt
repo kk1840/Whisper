@@ -57,7 +57,7 @@ object FactsRenderer {
         val todos = cards.filter { it.fact.kind != UserFact.KIND_FACT }.map { it.fact }
         val facts = cards.filter { it.fact.kind == UserFact.KIND_FACT }.map { it.fact }
         val sections = ArrayList<Pair<String, List<String>>>()
-        if (todos.isNotEmpty()) sections.add("待办" to todos.map { "[ ] " + FactFormat.oneLine(it) })
+        if (todos.isNotEmpty()) sections.add("待办" to todos.map { "待办：" + FactFormat.oneLine(it) })
         if (facts.isNotEmpty()) sections.add("事实" to facts.map { "• " + it.content })
         return paginate(name + if (newItems) " · 新增" else "", sections)
     }
@@ -65,7 +65,7 @@ object FactsRenderer {
     fun samplePages(): List<Page> = paginate(
         "张三",
         listOf(
-            "待办" to listOf("[ ] 周三下午三点去公司开会（会议室 A · 张三）", "[ ] 把合同发给李四"),
+            "待办" to listOf("待办：周三下午三点去公司开会（会议室 A · 张三）", "待办：把合同发给李四"),
             "事实" to listOf("• 最近在准备考研", "• 不吃辣", "• 这一行是用来测试自动换行的，长度故意超过一行的宽度看看效果"),
         )
     )

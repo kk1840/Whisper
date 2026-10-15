@@ -13,6 +13,7 @@ import com.stepos.whisper.data.Utterance;
 import com.stepos.whisper.llm.ExtractionResult;
 import com.stepos.whisper.llm.MergeSuggestion;
 import com.stepos.whisper.llm.NameMatcher;
+import com.stepos.whisper.notification.NotificationSource;
 import com.stepos.whisper.notification.NotificationWorker;
 
 import java.lang.reflect.Field;
@@ -35,6 +36,7 @@ public final class NotificationRegressionChecks {
             buffer.clear();
         }
         try {
+            sourceChecks();
             stateChecks(runner);
             AppDatabase db = Room.inMemoryDatabaseBuilder(runner.getTargetContext(), AppDatabase.class)
                     .allowMainThreadQueries().build();
@@ -55,12 +57,34 @@ public final class NotificationRegressionChecks {
         }
     }
 
+    private static void sourceChecks() throws Exception {
+        require(NotificationSource.isSupported(NotificationSource.WECHAT)
+                && NotificationSource.isSupported(NotificationSource.FEISHU)
+                && NotificationSource.isSupported(NotificationSource.DEMO), "supported source allowlist");
+        require(!NotificationSource.isSupported(null) && !NotificationSource.isSupported("unknown.app"),
+                "unknown source not accepted by default");
+        require(NotificationSource.label(null) == com.stepos.whisper.R.string.transcript_notification
+                && NotificationSource.label("unknown.app") == com.stepos.whisper.R.string.transcript_notification,
+                "unknown source generic label");
+        android.app.Notification notification = new android.app.Notification();
+        notification.extras = new android.os.Bundle();
+        notification.extras.putCharSequence(android.app.Notification.EXTRA_TITLE, "Synthetic sender");
+        notification.extras.putCharSequence(android.app.Notification.EXTRA_TEXT, "正文[附件] [] 不改写");
+        String[] parsed = (String[]) method(com.stepos.whisper.notification.WeChatNotificationListener.class,
+                "parseMessage", android.app.Notification.class).invoke(null, notification);
+        require("Synthetic sender".equals(parsed[0]) && "正文[附件] [] 不改写".equals(parsed[1]),
+                "raw notification bracket text preserved");
+    }
+
     private static void stateChecks(Instrumentation runner) throws Exception {
         TranscriptLine queued = TranscriptLine.notification(901, 300, "微信昵称", "明天开会",
-                TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN, Utterance.AI_QUEUED, true);
+                TranscriptLine.NO_USER, TranscriptLine.COLOR_UNKNOWN, Utterance.AI_QUEUED, true,
+                NotificationSource.FEISHU);
+        require(NotificationSource.FEISHU.equals(queued.withSpeaker("改名", 1, 0)
+                .withAiState(Utterance.AI_DONE).notificationPackage), "copy retains source");
         ServiceState.upsertNotificationLine(queued);
         ServiceState.upsertNotificationLine(TranscriptLine.notification(901, 300, "真实姓名", queued.text,
-                7, 123, Utterance.AI_DONE, false));
+                7, 123, Utterance.AI_DONE, false, NotificationSource.FEISHU));
         require(buffer().size() == 1, "upsert must not append a duplicate card");
         TranscriptLine done = card(901);
         require(done.id == queued.id && done.id == -901, "notification id is stable");
@@ -87,6 +111,7 @@ public final class NotificationRegressionChecks {
         require(!ServiceState.applyVoiceprint(-902, "语音用户", 9, 1), "voiceprint excludes notifications");
         require(ServiceState.latestLine() == null, "latest voice line excludes notifications");
         ServiceState.clearLines();
+        require(NotificationSource.FEISHU.equals(card(901).notificationPackage), "relabel preserves source");
         require(buffer().size() == 2, "voice clear preserves runtime notifications");
         runner.waitForIdleSync();
         List<TranscriptLine> published = ServiceState.lines().getValue();
@@ -109,6 +134,8 @@ public final class NotificationRegressionChecks {
                 && db.userDao().get(resolved.userId).name.equals("离线用户"), "offline user saved");
         require(!card(first.id).aliasPending && card(first.id).userId == resolved.userId,
                 "offline assignment refreshes card");
+        require(NotificationSource.FEISHU.equals(card(first.id).notificationPackage),
+                "alias assignment retains restored source");
         require(store.findPendingAlias(first.id).jobId == second.id, "next alias after write");
         store.setAlias(second.sender, null);
         AppDatabase.IO.submit(() -> { }).get(5, TimeUnit.SECONDS);
@@ -177,6 +204,7 @@ public final class NotificationRegressionChecks {
 
     private static NotificationJob job(AppDatabase db, String sender) {
         NotificationJob job = new NotificationJob();
+        job.packageName = NotificationSource.FEISHU;
         job.sender = sender;
         job.text = "离线测试消息";
         job.postTime = 1000;

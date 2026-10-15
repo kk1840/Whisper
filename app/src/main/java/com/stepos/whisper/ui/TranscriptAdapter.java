@@ -10,6 +10,8 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.stepos.whisper.notification.NotificationSource;
+import java.util.Objects;
 import com.stepos.whisper.R;
 import com.stepos.whisper.data.Utterance;
 import com.stepos.whisper.databinding.ItemTranscriptBinding;
@@ -50,7 +52,8 @@ class TranscriptAdapter extends ListAdapter<TranscriptLine, TranscriptAdapter.Ho
             public boolean areContentsTheSame(@NonNull TranscriptLine a, @NonNull TranscriptLine b) {
                 return a.speaker.equals(b.speaker) && a.text.equals(b.text) && a.color == b.color
                         && a.aiState == b.aiState && a.userId == b.userId
-                        && a.aliasPending == b.aliasPending && a.timeMs == b.timeMs;
+                        && a.aliasPending == b.aliasPending && a.timeMs == b.timeMs
+                        && Objects.equals(a.notificationPackage, b.notificationPackage);
             }
         });
         mListener = listener;
@@ -74,6 +77,13 @@ class TranscriptAdapter extends ListAdapter<TranscriptLine, TranscriptAdapter.Ho
         int padding = Math.round((line.isNotification() ? 12 : 6)
                 * holder.itemView.getResources().getDisplayMetrics().density);
         holder.itemView.setPadding(padding, padding, padding, padding);
+        ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) holder.itemView.getLayoutParams();
+        int gap = line.isNotification() ? Math.round(4 * holder.itemView.getResources()
+                .getDisplayMetrics().density) : 0;
+        margins.topMargin = gap;
+        margins.bottomMargin = gap;
+        holder.itemView.setLayoutParams(margins);
+        b.notificationType.setText(NotificationSource.label(line.notificationPackage));
         b.notificationType.setVisibility(line.isNotification() ? View.VISIBLE : View.GONE);
         b.aliasPending.setVisibility(line.isNotification() && line.aliasPending ? View.VISIBLE : View.GONE);
         b.speaker.setText(line.speaker);

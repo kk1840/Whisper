@@ -10,7 +10,7 @@ import com.stepos.whisper.glasses.GlassesManager
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicLong
 
-/** 无网络、无数据库写入的设备回归检查。 */
+/** 无网络，仅合成数据和隔离测试数据库的设备回归检查。 */
 class RegressionInstrumentation : Instrumentation() {
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -24,11 +24,14 @@ class RegressionInstrumentation : Instrumentation() {
             ImmediateExtractionRegressionChecks.runChecks(targetContext)
             NotificationRegressionChecks.runChecks(this)
             com.stepos.whisper.ui.NotificationCardUiChecks.runChecks(this)
+            com.stepos.whisper.ui.CardStackUiChecks.runChecks(this)
+            FactMergeRegressionChecks.runChecks(this)
+            NotificationMigrationChecks.runChecks(this)
             pendingChecks()
             paginationChecks()
             todoChecks()
             rotationChecks()
-            result.putString("stream", "PASS: voiceprint manual priority, stale callbacks, score/error checks, pending resolution, full text pagination, todo pixels/BMP, single-page show cancellation\n")
+            result.putString("stream", "PASS: notification sources/copies/margins, v9-v10 migration, card top/browse/drag, structured placeholders/JSON rejection, merge fields/preview/fallback, voiceprint, pagination, todo text/pixels/BMP, show cancellation\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
             result.putString("stream", "FAIL: ${error.stackTraceToString()}\n")
@@ -91,6 +94,9 @@ class RegressionInstrumentation : Instrumentation() {
             bitmap.recycle()
         }
         check(FactsRenderer.samplePages().isNotEmpty())
+        val samples = FactsRenderer.samplePages().flatMap { it.slices }.map { it.layout.text.toString() }
+        check(samples.any { it.startsWith("待办：") })
+        check(samples.none { it.startsWith("[ ] ") })
         check(FactsRenderer.pages("李四", emptyList()).size == 1)
     }
 
@@ -107,7 +113,13 @@ class RegressionInstrumentation : Instrumentation() {
             }
             val card = FactCard().apply { fact = todo }
             val page = FactsRenderer.pages("演示联系人", listOf(card)).first()
-            val body = page.slices.first { it.layout.text.startsWith("[ ] ") }
+            val body = page.slices.first { it.layout.text.startsWith("待办：") }
+            check(body.layout.text.toString() == "待办：" + com.stepos.whisper.ui.FactFormat.oneLine(todo))
+            if (withExtras) {
+                check(body.layout.text.contains(todo.dueTime))
+                check(body.layout.text.contains(todo.location))
+                check(body.layout.text.contains(todo.people))
+            }
             check(body.layout.text.contains(todo.content))
             val bitmap = page.render()
             var lit = 0

@@ -1,7 +1,5 @@
 package com.stepos.whisper.ui;
 
-import android.text.TextUtils;
-
 import com.stepos.whisper.data.UserFact;
 
 /** 事项的统一文字格式：时间、地点、人物、事情。 */
@@ -12,7 +10,10 @@ public final class FactFormat {
     }
 
     public static String orEmpty(String s) {
-        return TextUtils.isEmpty(s) ? EMPTY : s;
+        if (s == null) return EMPTY;
+        String trimmed = s.trim();
+        return trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed) || "无".equals(trimmed)
+                || trimmed.matches("\\[\\s*\\]") ? EMPTY : s;
     }
 
     /** 单行摘要，用于通知。 */
@@ -37,7 +38,7 @@ public final class FactFormat {
     }
 
     private static void append(StringBuilder sb, String s) {
-        if (TextUtils.isEmpty(s)) {
+        if (EMPTY.equals(orEmpty(s))) {
             return;
         }
         if (sb.length() > 0) {

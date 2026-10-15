@@ -28,6 +28,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Map;
 
 /**
@@ -140,6 +141,7 @@ public class CardStackView extends FrameLayout {
         }
         mSourceOrder = order;
 
+        Map<Long, Card> updated = new HashMap<>();
         List<Card> kept = new ArrayList<>();
         Map<Long, Card> existing = new HashMap<>();
         for (Card card : mDeck) {
@@ -147,15 +149,25 @@ public class CardStackView extends FrameLayout {
             if (data == null) {
                 removeView(card.view);
             } else {
+                UserFact old = card.data.fact;
+                UserFact next = data.fact;
+                boolean changed = next.kind == UserFact.KIND_TODO
+                        && (!Objects.equals(old.content, next.content)
+                        || !Objects.equals(old.dueTime, next.dueTime)
+                        || !Objects.equals(old.location, next.location)
+                        || !Objects.equals(old.people, next.people));
                 card.data = data;
                 bind(card);
-                kept.add(card);
+                if (changed) updated.put(next.id, card);
+                else kept.add(card);
                 existing.put(data.fact.id, card);
             }
         }
         List<Card> added = new ArrayList<>();
         for (FactCard data : cards) {
             if (existing.containsKey(data.fact.id)) {
+                Card changed = updated.get(data.fact.id);
+                if (changed != null) added.add(changed);
                 continue;
             }
             Card card = new Card(ItemFactCardBinding.inflate(LayoutInflater.from(getContext()), this, false));

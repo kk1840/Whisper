@@ -227,5 +227,7 @@ public class MergeOverlay {
                 FactFormat.orEmpty(merged != null && merged.time != null ? merged.time : f.dueTime)));
         card.location.setText(mContext.getString(R.string.card_location,
                 FactFormat.orEmpty(merged != null && merged.location != null ? merged.location : f.location)));
+        card.people.setText(mContext.getString(R.string.card_people,
+                FactFormat.orEmpty(merged != null && merged.people != null ? merged.people : f.people)));
     }
 }
