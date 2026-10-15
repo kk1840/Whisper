@@ -21,3 +21,5 @@ __pycache__/
 /.stepcode/
 /.workbuddy/
 /.zcode/
+# Gradle 子模块构建产物
+build/
