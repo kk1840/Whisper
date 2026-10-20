@@ -1,93 +1,121 @@
-# Whisper
+# Whisper｜全天候主动式对话记忆助手——作品方案与实现说明
 
+听见每一次对话，记住每一个人。Whisper 以智能眼镜为核心入口，让用户无需掏手机、低头或中断手头的事，就能记录现实对话，并在需要时收到仅佩戴者可见的主动提示。它把物理世界中的交流与数字世界中的通知、任意界面截图连接起来，形成统一的个人记忆。
 
+# 一、作品名称与定位
 
-## Getting started
+**作品名称：Whisper——****全天候主动式对话记忆助手****。**面向日常社交、工作协作和个人事务，以智能眼镜实现无打扰记录与隐藏式主动提醒，把“说过什么、看过什么”转化为“此刻需要记住什么”。核心目标是打通物理世界与数字世界个人数据的鸿沟，让现实交流、通讯通知与屏幕信息进入同一套个人记忆。
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+**解决的问题**
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- 口头答应的事、约定和联系人近况容易遗忘。
 
-## Add your files
+- 物理世界的口头交流与数字世界的通知、屏幕内容彼此割裂，个人数据难以串联。
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+- 普通笔记需要主动查找，往往不能在见到相关人时及时出现。
 
+**产品目标**
+
+- 通过智能眼镜记录对话，无需掏手机或停下当前活动，减少手动记笔记带来的打断。
+
+- 把现实对话、通讯通知与任意界面截图中的个人信息汇入统一记忆，按人物和事项组织。
+
+- 结合人物与当前场景主动唤起相关记忆，提示隐藏在镜片视野内，仅佩戴者可见，不打断交流。
+
+作品由智能眼镜与 Android 原生应用共同构成：眼镜承担自然佩戴状态下的录音入口与隐藏式主动提醒，STEPX Neo承担计算协同、个人记忆管理与辅助交互。无打扰指无需为记录或查看提醒而中断当前活动。
+
+---
+
+# 二、核心功能与使用场景
+
+核心能力是“眼镜无打扰记录—跨来源个人记忆—隐藏式主动提醒”：用户可以继续交谈、工作或处理手头事务，不必专门拿出设备记事；重要信息在恰当时机以仅佩戴者可见的提示回到眼前。
+
+| 功能               | 实现与用户价值                                               |
+| ------------------ | ------------------------------------------------------------ |
+| 眼镜录音与实时转写 | 通过智能眼镜作为录音入口，在自然佩戴状态下记录现实对话，无需掏手机、低头或中断当前活动；应用协同完成实时转写与说话人归属。 |
+| 人物识别与管理     | 声纹注册与检索辅助识别机主、熟人和陌生人；支持人物命名、关联与合并，修正身份归属。 |
+| 结构化记忆提取     | 从对话提取待办与约定的时间、地点、人物、事件，以及近况、偏好和个人信息；未提及字段保留为空。 |
+| 记忆动态更新       | 已有记忆进入模型上下文，减少重复；对话表明已完成、已取消或已失效时，更新相应条目。通知来源的疑似同一事项合并由用户确认。 |
+| 任意界面截图入库   | 截图入口不限于聊天界面，可来自任意应用页面，例如日程、订单、网页、工作材料或聊天窗口；视觉模型提取其中有个人后续价值的信息。涉及人物时关联人物，涉及事项时沉淀待办与事实。 |
+| 通讯工具通知补充   | 统一接入微信、飞书及其他通讯工具的通知，把消息中的约定、任务和个人信息纳入记忆；通知是跨工具的信息入口，不局限于某一款应用。 |
+| 情境化提醒         | 熟人再次开口时主动查询相关待办与事实，优先在智能眼镜中呈现简短提示；用户无需主动搜索，也不必打断正在进行的交流。 |
+| 隐藏式眼镜提醒     | 智能眼镜是必选终端。记忆摘要以仅佩戴者可见的隐藏式提示呈现在镜片视野内，不通过外放声音提醒，不需要亮起手机屏幕或停下手头的事。 |
+
+**示例场景****1**：同事说“下周三下午三点到公司开会，记得带合同”，并提到“最近胃不舒服”。用户戴着智能眼镜即可自然记录这段对话，不必拿出手机。Whisper 分别形成约定与近况记忆；下次与该同事交流时，镜片内主动浮现仅用户可见的简短提示，既帮助跟进合同，也提醒照顾对方近况，交谈无需暂停。
+
+**示例场景2：物理与数字信息自动融合**
+
+早上出门时，妻子说：“下班买点葱。”智能眼镜记录这段现实对话，Whisper 生成“下班买葱”的待办。下午，妻子在微信上发来：“再带一箱牛奶。”通知进入同一套个人记忆后，Whisper 结合发送人、当天时间和采购意图，识别出这是对早上事项的补充，而不是另一件独立的事。
+
+**自动融合后的待办：**今天下班买葱，并带一箱牛奶。口头交代与线上追加汇入同一张采购清单，相关提醒出现时，智能眼镜呈现完整内容，用户不用翻聊天记录或自己把两条信息拼起来。
+
+这个例子体现作品方案中的跨来源自动融合：同一人物、同一场景和明确补充意图的信息自动整合；无法确定是否同一事项时，再交由用户确认。微信在此仅为示例，飞书或其他通讯工具通知也可作为数字信息来源。
+
+---
+
+# 三、技术方案与实现思路
+
+**整体方案：智能眼镜负责无打扰录音与隐藏式主动提醒，Android 应用负责设备协同、数字信息接入与记忆管理，Step 模型负责识别与语义理解。物理世界与数字世界的信息汇入同一套个人记忆，再回到用户当下的场景。**
+
+| 模块       | 实现思路与关键组件                                           |
+| ---------- | ------------------------------------------------------------ |
+| 采集与转写 | 方案以智能眼镜麦克风作为现实对话采集入口，手机协同接收音频并接入 Step 流式 ASR。应用采用 Java/Kotlin 与 OkHttp WebSocket，处理 PCM 音频、实时字幕、整句定稿与时间轴；用户无需为录音操作手机或中断活动。 |
+| 人物归属   | 当前使用讯飞声纹服务做注册与 1:N 检索；声纹结果异步回填。短句、未命中及新注册的学习延迟分别处理，减少重复陌生人档案；用户可手动校正。 |
+| 截图与通知 | 数字信息通过两类入口汇入：任意界面截图由视觉模型理解，通讯工具通知通过 NotificationListenerService 接入。面向微信、飞书及其他通讯工具统一组织通知内容；截图不限定为聊天，按页面语义提取人物、事项及事实，人物关联需要时由用户确认。 |
+| 语义提取   | StepFunChatClient 统一封装 Chat Completions；按来源设置提示词，把对话及已有记忆作为上下文，输出 JSON，由 FactSaver 处理保存与状态更新。 |
+| 本机数据层 | Room/SQLite 保存人物、转写、待办与事实、聊天别名和待处理任务；任务先落库再执行，界面数据库操作及后台任务分线程处理。 |
+| 情境提醒   | ConversationManager 按人物维护会话；超过 5 分钟未说话后再次开口触发新会话提醒。同一会话不因每句话重复触发开场提醒。 |
+| 眼镜呈现   | 手机端把记忆摘要渲染为适配镜片的位图，通过 BLE 传输到智能眼镜。提示仅佩戴者可见，采用短内容与自动消隐，不播放外放提醒音；用户保持当前视线和活动，即可获得主动提示。 |
+
+方案重点：让“眼镜感知现实—通知与截图接入数字信息—统一个人记忆—镜片主动提示”形成闭环。录音与提示都融入自然佩戴状态，既不要求用户停下手头的事，也不通过公开屏幕或声音打断现场交流。
+
+---
+
+# 四、作品创新点
+
+核心创新在于以智能眼镜贯穿感知与提示，打通物理世界与数字世界个人数据的鸿沟：不是再增加一个需要打开的记录工具，而是让记忆在活动不中断的情况下被积累，并以隐藏式提示主动回到眼前。
+
+| 创新点                       | 区别与价值                                                   |
+| ---------------------------- | ------------------------------------------------------------ |
+| 智能眼镜无打扰记录           | 智能眼镜是必选组成。自然佩戴即可记录现实对话，无需掏手机、低头或暂停工作与交谈，让记录成为当前活动的背景过程。 |
+| 隐藏式主动提醒               | 结合人物与场景主动唤起相关记忆，提示只在佩戴者镜片内呈现，不外放声音、不亮起公共屏幕；用户无需主动搜索，交流和手头事务继续进行。 |
+| 打通物理与数字世界的个人数据 | 现实世界的口头承诺与数字世界的通讯通知、任意界面截图被组织为同一套人物、待办和事实数据，跨越来源边界，形成可以在现实场景中调用的个人记忆。 |
+| 可维护而非只新增的记忆       | 结合已有记忆理解新对话，支持去重、完成和失效更新；疑似同一事项可以提出合并建议，由用户确认。 |
+| 任意界面的数字记忆入口       | 不把截图限制为聊天记录：页面中的日程、订单、网页内容、工作事项等均可作为数字记忆输入；聊天界面再结合气泡位置与昵称进行人物归属。 |
+| 手机与眼镜协同               | 眼镜承担录音入口和隐藏式提醒，手机承担计算协同与记忆管理；二者共同完成作品体验，智能眼镜不是可选的附加显示屏。 |
+
+**一句话概括**：Whisper 让物理世界与数字世界的个人数据相互连接，用智能眼镜在不打断当前活动的情况下积累记忆，再以仅佩戴者可见的提示主动提醒。
+
+---
+
+# 五、Step 模型使用情况
+
+**Step 模型是作品的智能能力核心，支撑眼镜录音的语音理解、数字界面信息理解和跨来源记忆提取。**以下列出模型使用与方案分工；眼镜录音、多通讯工具通知及任意界面截图按本作品方案描述，不将其视为本次已完成代码适配或设备验收。
+
+| 模型                         | 使用位置                                                     | 输入与输出                                                   |
+| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| stepaudio\-2\.5\-asr\-stream | StepAsrStreamClient；Step 实时 ASR WebSocket 通道。          | 输入连续 PCM 音频帧；输出累计中间字幕、整句定稿及时间信息，为人物归属与后续记忆提取提供文字基础。 |
+| step\-5\-preview（视觉理解） | Chat Completions 视觉通道；聊天场景已有 parseChatScreenshot 封装，任意界面场景按页面语义设计提取提示词。 | 输入任意界面截图原图及页面理解指令，提取与个人有关的人物、待办与事实；聊天界面可进一步输出 participants 与 dialogue。原图以 image\_url/data URI 提供，detail 为 high。 |
+| step\-5\-preview（文本提取） | StepFunChatClient\.extract；语音、截图和通知来源复用。       | 输入按人组织的对话、当前人物及已有待办与事实；输出新增待办、新增事实、完成待办 ID、失效事实 ID，通知来源还可输出疑似事项合并建议。 |
+
+Chat Completions 使用 temperature=0\.2 和 response\_format=json\_object。提示词按语音、截图、通知分别说明来源，要求不编造缺失字段、不强凑待办、忽略寒暄，并把事项或事实控制为简短中文。
+
+```json
+{
+  "new_todos": [{"time": "下周三15:00", "location": "公司", "people": "我、同事", "event": "开会并带合同", "type": "约定"}],
+  "new_facts": [{"content": "最近胃不舒服", "type": "近况"}],
+  "completed_todo_ids": [],
+  "outdated_fact_ids": []
+}
 ```
-cd existing_repo
-git remote add origin https://git.zyql.com/liuziqian/whisper.git
-git branch -M main
-git push -uf origin main
-```
 
-## Integrate with your tools
+- **结果约束：**使用 JSON 输出约束，按输入场景检查结构；聊天页面检查参与者与对话，其他页面按人物、事项和事实提取。缺失字段不编造，减少无关信息进入个人记忆。
 
-- [ ] [Set up project integrations](https://git.zyql.com/liuziqian/whisper/-/settings/integrations)
+- **上下文利用：**把已有条目传给模型，支持避免重复及识别状态变化；通知中的合并建议不直接当成确定事实自动合并。
 
-## Collaborate with your team
+- **角色分工：**Step 负责识别与语义理解；讯飞声纹服务负责声音身份匹配；智能眼镜负责现实录音入口与隐藏式提示；手机负责数字信息接入、身份确认、任务调度及个人记忆保存。
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+- **使用方式：**通过在线 API 调用 Step 模型，利用提示词与已有记忆上下文完成场景理解和记忆更新，不依赖对基础模型进行微调。
 
-## Test and Deploy
+Step 贯穿“听懂物理世界的对话—理解数字世界的界面与通知—提炼统一个人记忆”的主链路。智能眼镜把这些记忆以隐藏式主动提示带回现实，让信息跨越屏幕与现场之间的鸿沟。
 
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
