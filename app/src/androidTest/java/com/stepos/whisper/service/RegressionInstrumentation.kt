@@ -20,6 +20,7 @@ class RegressionInstrumentation : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         try {
+            com.stepos.whisper.llm.ScreenshotVisionChecks.runChecks()
             VoiceprintRegressionInstrumentation().runChecks()
             ImmediateExtractionRegressionChecks.runChecks(targetContext)
             NotificationRegressionChecks.runChecks(this)
@@ -31,7 +32,7 @@ class RegressionInstrumentation : Instrumentation() {
             paginationChecks()
             todoChecks()
             rotationChecks()
-            result.putString("stream", "PASS: notification sources/copies/margins, v9-v10 migration, card top/browse/drag, structured placeholders/JSON rejection, merge fields/preview/fallback, voiceprint, pagination, todo text/pixels/BMP, show cancellation\n")
+            result.putString("stream", "PASS: screenshot vision payload/retry/errors, notification sources/copies/margins, v9-v10 migration, card top/browse/drag, structured placeholders/JSON rejection, merge fields/preview/fallback, voiceprint, pagination, todo text/pixels/BMP, show cancellation\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
             result.putString("stream", "FAIL: ${error.stackTraceToString()}\n")

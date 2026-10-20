@@ -190,7 +190,7 @@
     <string name="ocr_copied">已复制</string>
 
     <string name="menu_screenshot_watch">识别聊天截图</string>
-    <string name="menu_screenshot_watch_hint">截下聊天界面后自动识别文字，提取待办和事实</string>
+    <string name="menu_screenshot_watch_hint">截下聊天界面后自动将图片发送给 AI，提取待办和事实</string>
     <string name="menu_notification_watch">读取通知</string>
     <string name="menu_notification_watch_hint">读取微信、飞书和 Demo 通知，识别熟人的待办，疑似已有待办时提醒合并</string>
     <string name="notification_listener_label">读取通知</string>
@@ -230,13 +230,10 @@
     <string name="live_action_assign">指定</string>
     <string name="live_shot_title">截图识别</string>
     <string name="live_shot_detected">检测到截图</string>
-    <string name="live_shot_detected_content">准备识别截图中的文字</string>
-    <string name="live_shot_ocr">识别文字</string>
-    <string name="live_shot_ocr_capsule">识别文字中</string>
-    <string name="live_shot_ocr_content">正在识别截图中的文字…</string>
+    <string name="live_shot_detected_content">准备将截图发送给 AI 分析</string>
     <string name="live_shot_ai">AI 分析</string>
     <string name="live_shot_ai_capsule">AI 分析中</string>
-    <string name="live_shot_ai_content">已发送给 AI，正在提取待办和信息…</string>
+    <string name="live_shot_ai_content">正在将截图交给 AI，识别对话并提取待办和信息…</string>
     <string name="live_shot_done">完成</string>
     <string name="live_shot_done_capsule">无新事项</string>
     <string name="live_shot_done_content">没有发现新的待办或信息</string>

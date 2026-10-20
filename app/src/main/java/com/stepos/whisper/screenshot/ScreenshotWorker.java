@@ -3,8 +3,6 @@ package com.stepos.whisper.screenshot;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.ImageDecoder;
 import android.net.Uri;
 import android.os.Process;
 import android.util.Log;
@@ -25,10 +23,10 @@ import com.stepos.whisper.llm.ExtractionWorker;
 import com.stepos.whisper.llm.FactSaver;
 import com.stepos.whisper.llm.NameMatcher;
 import com.stepos.whisper.llm.StepFunChatClient;
-import com.stepos.whisper.ocr.OcrEngine;
-import com.stepos.whisper.ocr.OcrResult;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -48,8 +46,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 聊天截图处理队列。每张截图：
  * <ol>
- *   <li>本机 OCR，把每行文字连同左 / 右 / 中位置整理成文本（{@link ChatLayoutText}）；</li>
- *   <li>把这段文本发给大模型，整理出参与者和按发送者排列的对话（{@link ChatParse}）；</li>
+ *   <li>直接把截图原图发给视觉模型，整理出参与者和按发送者排列的对话（{@link ChatParse}）；</li>
  *   <li>把参与者的昵称对应到用户：只有机主指定过的昵称直接对应；没指定过的昵称一律等机主指定，
  *       名字或以前的昵称相似（含完全同名）的人会在指定窗口里预先选中作为推荐，但绝不自动对应
  *       （见 {@link ChatAlias}、{@link NameMatcher}）；</li>
@@ -64,8 +61,8 @@ public class ScreenshotWorker implements AliasWorker {
     private static final int MAX_REJECTED_ATTEMPTS = 3;
     private static final int[] RETRY_DELAYS_S = {5, 10, 20, 40, 60, 120, 300};
     private static final long JOB_RETENTION_MS = 3L * 24 * 60 * 60 * 1000;
-    /** 队列空闲这么久后释放 OCR 模型（约 140 MB 内存），下次用时再加载（约 0.3 秒）。 */
-    private static final long OCR_IDLE_CLOSE_MS = 60_000;
+    /** 限制原图读取和 Base64 编码的内存占用，不缩小图片中的文字。 */
+    private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
     private static final int SAMPLE_MESSAGES = 3;
     private static final String OWNER_WHO = "无（这段聊天里没有已登记的熟人，记录与机主本人相关的事项）";
 
@@ -73,8 +70,6 @@ public class ScreenshotWorker implements AliasWorker {
     public enum Stage {
         /** 系统开始保存新截图。 */
         DETECTED,
-        /** 本机识别文字。 */
-        OCR,
         /** 已发给 AI，整理对话、提取事项。 */
         AI,
         /** 处理完，count 是新增的事项数（可能为 0）。 */
@@ -114,7 +109,7 @@ public class ScreenshotWorker implements AliasWorker {
     private final StepFunChatClient mClient;
     private final Listener mListener;
     private final Gson mGson = new Gson();
-    /** 后台优先级：OCR 会把几个核跑满，onnxruntime 的工作线程继承这个优先级，不至于把主线程饿出 ANR。 */
+    /** 后台优先级，图片读取和编码不阻塞界面。 */
     private final ScheduledExecutorService mExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(() -> {
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
@@ -125,8 +120,6 @@ public class ScreenshotWorker implements AliasWorker {
     private final SimpleDateFormat mTimeFormat = new SimpleDateFormat("M月d日 HH:mm", Locale.CHINA);
 
     // worker 线程
-    private OcrEngine mOcr;
-    private ScheduledFuture<?> mCloseOcr;
     private ScheduledFuture<?> mScheduledRetry;
     private int mRetryStep;
     /** 有昵称等待机主指定的截图，指定后重新处理。 */
@@ -236,7 +229,6 @@ public class ScreenshotWorker implements AliasWorker {
     }
 
     public void shutdown() {
-        mExecutor.execute(this::closeOcr);
         mExecutor.shutdown();
     }
 
@@ -320,47 +312,43 @@ public class ScreenshotWorker implements AliasWorker {
             Log.w(TAG, "StepFun API key not configured, screenshots left in queue");
             return;
         }
-        try {
-            for (ScreenshotJob job : mDb.screenshotJobDao().getAll()) {
-                if (mWaiting.contains(job.id)) {
-                    continue;
-                }
-                if (!process(job)) {
-                    scheduleRetry();
-                    return;
-                }
+        for (ScreenshotJob job : mDb.screenshotJobDao().getAll()) {
+            if (mWaiting.contains(job.id)) {
+                continue;
             }
-        } finally {
-            scheduleOcrClose();
+            if (!process(job)) {
+                scheduleRetry();
+                return;
+            }
         }
     }
 
     /** 返回 false 表示遇到网络类问题，应稍后整体重试。 */
     private boolean process(ScreenshotJob job) {
-        // 第一步：本机 OCR。结果落库，之后重试不再重复识别。
-        if (job.layoutText == null) {
-            progress(job, Stage.OCR, 0);
-            String text = ocr(job);
-            if (text == null) {
-                finish(job, Stage.NO_TEXT, 0);
-                return true;
-            }
-            job.layoutText = text;
-            mDb.screenshotJobDao().setLayoutText(job.id, text);
-            Log.i(TAG, "job " + job.id + ": ocr " + text.split("\n").length + " lines");
-            if (BuildConfig.DEBUG) {
-                Log.d(TAG, "job " + job.id + " layout:\n" + text);
-            }
-        }
         if (!ExtractionWorker.isNetworkAvailable(mContext)) {
             defer(job);
             return false;
         }
         progress(job, Stage.AI, 0);
-        // 第二步：把 OCR 文字发给大模型，整理出参与者和对话。
+        // 第一步：读取原图交给视觉模型，结果落库后不再重复上传。
         if (job.parsed == null) {
+            byte[] image;
+            String mimeType;
             try {
-                ChatParse parse = mClient.parseChatScreenshot(appLabel(job.sourceApp), job.layoutText);
+                Uri uri = Uri.parse(job.uri);
+                mimeType = mContext.getContentResolver().getType(uri);
+                if (!"image/png".equals(mimeType) && !"image/jpeg".equals(mimeType)
+                        && !"image/webp".equals(mimeType)) {
+                    throw new IOException("unsupported screenshot type");
+                }
+                image = readImage(uri);
+            } catch (IOException | RuntimeException e) {
+                Log.w(TAG, "cannot read screenshot for job " + job.id, e);
+                finish(job, Stage.FAILED, 0);
+                return true;
+            }
+            try {
+                ChatParse parse = mClient.parseChatScreenshot(appLabel(job.sourceApp), image, mimeType);
                 job.parsed = mGson.toJson(parse);
                 mDb.screenshotJobDao().setParsed(job.id, job.parsed);
                 mRetryStep = 0;
@@ -382,20 +370,11 @@ public class ScreenshotWorker implements AliasWorker {
         ChatParse parse = parse(job);
         String dialogue = parse == null ? null : parse.dialogueText();
         if (dialogue == null) {
-            if (job.attempts == 0 && looksLikeChat(job.layoutText)) {
-                // 模型偶尔会把明显的聊天截图整理成空结果，重新整理一次。
-                Log.w(TAG, "job " + job.id + ": empty parse for chat-like layout, retrying once");
-                mDb.screenshotJobDao().incrementAttempts(job.id);
-                mDb.screenshotJobDao().setParsed(job.id, null);
-                job.attempts++;
-                job.parsed = null;
-                return process(job);
-            }
             finish(job, Stage.NO_TEXT, 0);
             return true;
         }
 
-        // 第三步：昵称对应到用户。
+        // 第二步：昵称对应到用户。
         List<String> unresolved = new ArrayList<>();
         Map<Long, List<String>> targets = new LinkedHashMap<>();
         for (String name : parse.otherNames()) {
@@ -429,7 +408,7 @@ public class ScreenshotWorker implements AliasWorker {
             targets.put(owner.id, new ArrayList<>());
         }
 
-        // 第四步：按对应到的每个人提取待办和事实。
+        // 第三步：按对应到的每个人提取待办和事实。
         String transcript = "截图时间：" + mTimeFormat.format(new Date(job.takenAt)) + "\n" + dialogue;
         int addedCount = 0;
         for (Map.Entry<Long, List<String>> e : targets.entrySet()) {
@@ -498,11 +477,6 @@ public class ScreenshotWorker implements AliasWorker {
         }
     }
 
-    /** 左右两侧都有文字的截图大概率是聊天界面。 */
-    static boolean looksLikeChat(String layoutText) {
-        return layoutText != null && layoutText.contains("[左] ") && layoutText.contains("[右] ");
-    }
-
     private ChatParse parse(ScreenshotJob job) {
         if (job.parsed == null) {
             return null;
@@ -515,42 +489,25 @@ public class ScreenshotWorker implements AliasWorker {
         }
     }
 
-    /** OCR 并整理成带位置标记的文本；图片已删除、模型缺失或没有文字时返回 null。 */
-    private String ocr(ScreenshotJob job) {
-        Bitmap bitmap;
-        try {
-            bitmap = ImageDecoder.decodeBitmap(
-                    ImageDecoder.createSource(mContext.getContentResolver(), Uri.parse(job.uri)),
-                    (decoder, info, source) -> decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE));
-        } catch (IOException | RuntimeException e) {
-            Log.w(TAG, "cannot decode " + job.uri + ": " + e.getMessage());
-            return null;
-        }
-        try {
-            if (mOcr == null) {
-                mOcr = new OcrEngine();
+    /** 原图有界读取，不解码或缩小，保留长截图中的文字细节。 */
+    private byte[] readImage(Uri uri) throws IOException {
+        try (InputStream input = mContext.getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (input == null) {
+                throw new IOException("screenshot is unavailable");
             }
-            OcrResult result = mOcr.recognize(bitmap);
-            return ChatLayoutText.build(result, bitmap.getWidth(), bitmap.getHeight());
-        } catch (IOException | RuntimeException e) {
-            Log.e(TAG, "ocr failed", e);
-            return null;
-        } finally {
-            bitmap.recycle();
-        }
-    }
-
-    private void scheduleOcrClose() {
-        if (mCloseOcr != null) {
-            mCloseOcr.cancel(false);
-        }
-        mCloseOcr = mOcr == null ? null : mExecutor.schedule(this::closeOcr, OCR_IDLE_CLOSE_MS, TimeUnit.MILLISECONDS);
-    }
-
-    private void closeOcr() {
-        if (mOcr != null) {
-            mOcr.close();
-            mOcr = null;
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count > MAX_IMAGE_BYTES - output.size()) {
+                    throw new IOException("screenshot exceeds 20 MiB");
+                }
+                output.write(buffer, 0, count);
+            }
+            if (output.size() == 0) {
+                throw new IOException("empty screenshot");
+            }
+            return output.toByteArray();
         }
     }
 

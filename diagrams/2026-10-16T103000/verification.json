@@ -1,0 +1,45 @@
+{
+  "node_count": 43,
+  "node_types": {
+    "svg": 7,
+    "text_shape": 21,
+    "connector": 7,
+    "composite_shape": 8
+  },
+  "node_bounds": {
+    "min_x": 24,
+    "min_y": 13.9739990234375,
+    "max_x": 1066,
+    "max_y": 540
+  },
+  "remote_image_size": [
+    2560,
+    2560
+  ],
+  "remote_content_bbox": [
+    223,
+    15,
+    2337,
+    1057
+  ],
+  "dark_pixels": 134206,
+  "nonwhite_pixels": 1049944,
+  "nonwhite_ratio": 0.1602,
+  "remote_image_sha256": "277dd7d6892d7fd637b5d79f540b8f658ff41833eb2c1d99f3372e82c3d581b9",
+  "model_visual_support": false,
+  "doc_revision_after": 64,
+  "board_preserved": true,
+  "required_text_checks": {
+    "作品方案": true,
+    "全天候主动式对话记忆助手": true,
+    "智能眼镜（必选）": true,
+    "Step ASR": true,
+    "讯飞声纹": true,
+    "任意界面截图": true,
+    "通讯通知": true,
+    "Step 理解": true,
+    "个人记忆": true,
+    "相关场景": true,
+    "仅佩戴者可见": true
+  }
+}

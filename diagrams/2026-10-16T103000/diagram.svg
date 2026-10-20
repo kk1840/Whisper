@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="580" viewBox="0 0 1100 580">
+  <text x="24" y="44" font-size="28" font-weight="bold" fill="#172B4D">作品方案</text>
+  <text x="24" y="82" font-size="24" fill="#172B4D">全天候主动式对话记忆助手</text>
+  <text x="24" y="120" font-size="18" fill="#42526E">现实对话与数字信息汇入同一记忆，在相关场景主动提示</text>
+  <rect x="24" y="154" width="210" height="94" rx="12" fill="#E8F0FF" stroke="#3167C5" stroke-width="2"/>
+  <text x="42" y="191" font-size="22" fill="#172B4D">智能眼镜（必选）</text>
+  <text x="42" y="224" font-size="20" fill="#172B4D">经授权录音</text>
+  <rect x="284" y="154" width="156" height="94" rx="12" fill="#E8F0FF" stroke="#3167C5" stroke-width="2"/>
+  <text x="302" y="191" font-size="22" fill="#172B4D">手机协同</text>
+  <text x="302" y="224" font-size="18" fill="#172B4D">音频接入与关联</text>
+  <rect x="490" y="154" width="230" height="94" rx="12" fill="#E8F0FF" stroke="#3167C5" stroke-width="2"/>
+  <text x="508" y="191" font-size="22" fill="#172B4D">Step ASR · 转写</text>
+  <text x="508" y="224" font-size="22" fill="#172B4D">讯飞声纹 · 识别人</text>
+  <rect x="816" y="154" width="250" height="226" rx="16" fill="#E4F5ED" stroke="#24845F" stroke-width="2"/>
+  <text x="838" y="209" font-size="22" font-weight="bold" fill="#174B37">个人记忆 · 同一库</text>
+  <text x="838" y="254" font-size="21" fill="#174B37">人物 · 对话 · 事实</text>
+  <text x="838" y="290" font-size="21" fill="#174B37">待办 · 历史上下文</text>
+  <text x="838" y="348" font-size="18" fill="#174B37">现实与数字信息统一关联</text>
+  <rect x="24" y="286" width="330" height="94" rx="12" fill="#FFF3DF" stroke="#B87B24" stroke-width="2"/>
+  <text x="42" y="323" font-size="22" fill="#5D421C">任意界面截图</text>
+  <text x="42" y="356" font-size="20" fill="#5D421C">通讯通知（微信、飞书等）</text>
+  <rect x="490" y="286" width="230" height="94" rx="12" fill="#FFF3DF" stroke="#B87B24" stroke-width="2"/>
+  <text x="508" y="323" font-size="22" fill="#5D421C">Step 理解</text>
+  <text x="508" y="356" font-size="20" fill="#5D421C">提取人物、事实、待办</text>
+  <rect x="24" y="446" width="330" height="94" rx="12" fill="#F0EAFF" stroke="#7552B1" stroke-width="2"/>
+  <text x="42" y="483" font-size="22" fill="#422969">相关场景（如熟人开口）</text>
+  <text x="42" y="516" font-size="20" fill="#422969">识别人，调取相关记忆</text>
+  <rect x="490" y="446" width="576" height="94" rx="12" fill="#F0EAFF" stroke="#7552B1" stroke-width="2"/>
+  <text x="512" y="483" font-size="24" font-weight="bold" fill="#422969">镜片主动提示 · 仅佩戴者可见</text>
+  <text x="512" y="516" font-size="20" fill="#422969">手机协同呈现，无需主动查询，不打断现场交流</text>
+  <line x1="234" y1="201" x2="284" y2="201" stroke="#3167C5" stroke-width="3"/>
+  <polygon points="284,201 274,195 274,207" fill="#3167C5"/>
+  <line x1="440" y1="201" x2="490" y2="201" stroke="#3167C5" stroke-width="3"/>
+  <polygon points="490,201 480,195 480,207" fill="#3167C5"/>
+  <line x1="720" y1="201" x2="816" y2="201" stroke="#3167C5" stroke-width="3"/>
+  <polygon points="816,201 806,195 806,207" fill="#3167C5"/>
+  <line x1="354" y1="333" x2="490" y2="333" stroke="#B87B24" stroke-width="3"/>
+  <polygon points="490,333 480,327 480,339" fill="#B87B24"/>
+  <line x1="720" y1="333" x2="816" y2="333" stroke="#B87B24" stroke-width="3"/>
+  <polygon points="816,333 806,327 806,339" fill="#B87B24"/>
+  <line x1="354" y1="493" x2="490" y2="493" stroke="#7552B1" stroke-width="3"/>
+  <polygon points="490,493 480,487 480,499" fill="#7552B1"/>
+  <line x1="942" y1="380" x2="942" y2="446" stroke="#7552B1" stroke-width="3"/>
+  <polygon points="942,446 936,436 948,436" fill="#7552B1"/>
+</svg>

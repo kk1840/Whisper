@@ -328,15 +328,6 @@ public class LiveNotifier {
                 done = false;
                 timeout = SCREENSHOT_DETECTED_TIMEOUT_MS;
                 break;
-            case OCR:
-                state = R.string.live_shot_ocr;
-                capsule = R.string.live_shot_ocr_capsule;
-                content = R.string.live_shot_ocr_content;
-                color = COLOR_PROGRESS;
-                event = EVENT_PROCESSING;
-                done = popup = false;
-                timeout = SCREENSHOT_STUCK_TIMEOUT_MS;
-                break;
             case AI:
                 state = R.string.live_shot_ai;
                 capsule = R.string.live_shot_ai_capsule;
